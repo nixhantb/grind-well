@@ -54,8 +54,10 @@ function reset() {
 }
 .progress-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-2);
   margin-bottom: var(--space-4);
 }
 .progress {
@@ -114,6 +116,7 @@ function reset() {
   font-size: var(--text-code-sm);
   line-height: var(--leading-code);
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   color: var(--color-text-muted);
 }
 

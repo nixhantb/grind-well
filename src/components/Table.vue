@@ -26,8 +26,10 @@
    rules cascade into slotted content on purpose. */
 .table-scroll {
   /* Desktop-first, but a wide table (many columns) must scroll inside
-     itself rather than force the whole page wider. */
+     itself rather than force the whole page wider - the primary way a
+     data-dense table works at phone width at all. */
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .table {
   width: 100%;

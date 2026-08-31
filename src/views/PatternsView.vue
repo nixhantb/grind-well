@@ -380,4 +380,39 @@ function markDone(problem: Problem) {
 .pattern-panel__full-link:hover {
   text-decoration: underline;
 }
+
+@media (max-width: 768px) {
+  .overall-card {
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    padding: var(--space-4);
+  }
+  .difficulty-breakdown {
+    margin-left: 0;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    gap: var(--space-3) var(--space-5);
+  }
+  .pattern-row {
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+  }
+  .pattern-row__bar {
+    width: 64px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* At this width the bar is too thin to read anyway - the count number
+     alone already carries the same information. */
+  .pattern-row__bar {
+    display: none;
+  }
+  .checklist-title {
+    /* Ellipsis-truncating a long title made sense with room to spare;
+       under 480px there isn't, so let it wrap onto a second line instead
+       of hiding half the problem's name. */
+    white-space: normal;
+  }
+}
 </style>

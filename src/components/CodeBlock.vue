@@ -39,6 +39,7 @@ const highlighted = computed(() => highlightCSharp(props.code))
   margin: 0;
   padding: var(--space-4) var(--space-5);
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--color-bg);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-md);

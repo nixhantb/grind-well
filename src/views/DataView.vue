@@ -183,6 +183,7 @@ function handleReset() {
 }
 .row {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3);
   align-items: center;
 }

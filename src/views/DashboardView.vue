@@ -394,4 +394,24 @@ const quickLinks = computed(() => [
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
 }
+
+@media (max-width: 480px) {
+  .stat-row {
+    /* auto-fit at 180px still tries to force 2 cramped columns on a
+       320-375px phone - one column per stat reads better than either
+       overflow or squeezed text. */
+    grid-template-columns: 1fr;
+  }
+  .hero-card__value {
+    font-size: 2rem;
+  }
+  .suggestion,
+  .due-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .suggestion > div {
+    margin-bottom: var(--space-2);
+  }
+}
 </style>

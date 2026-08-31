@@ -354,8 +354,10 @@ function practiceAgain() {
 <style scoped>
 .trainer-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
+  gap: var(--space-2) var(--space-4);
   margin-bottom: var(--space-4);
 }
 .eyebrow {
@@ -385,6 +387,7 @@ function practiceAgain() {
 
 .reference-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
   margin-bottom: var(--space-3);
@@ -404,6 +407,7 @@ function practiceAgain() {
   font-size: var(--text-code);
   line-height: var(--leading-code);
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -436,8 +440,10 @@ function practiceAgain() {
 
 .review-controls {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-2);
   margin-bottom: var(--space-3);
   font-size: var(--text-sm);
 }
@@ -519,6 +525,7 @@ function practiceAgain() {
 }
 .modal-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3);
   margin: var(--space-4) 0;
 }

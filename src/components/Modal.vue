@@ -52,4 +52,13 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
   max-height: 80vh;
   overflow-y: auto;
 }
+
+@media (max-width: 480px) {
+  .modal-backdrop {
+    padding: var(--space-3);
+  }
+  .modal {
+    padding: var(--space-4);
+  }
+}
 </style>

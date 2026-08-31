@@ -10,8 +10,8 @@
 // App.vue is the root component — the one thing main.ts mounts. Its only jobs
 // right now are: lay out the shell (nav + content area), render whichever
 // route is active via <RouterView>, and carry the active theme.
-import { computed } from 'vue'
-import { RouterLink, RouterView } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   Zap,
@@ -25,6 +25,8 @@ import {
   Sun,
   Moon,
   ShieldCheck,
+  Menu,
+  X,
 } from '@lucide/vue'
 import { useAppStore } from './stores/app'
 import { useProgressStore } from './stores/progress'
@@ -37,6 +39,22 @@ const store = useAppStore()
 const progressStore = useProgressStore()
 const { showHelp } = useGlobalShortcuts()
 const shortcuts = useShortcuts()
+const route = useRoute()
+
+// ---------- mobile nav drawer ----------
+// Below 768px the sidebar becomes an off-canvas drawer (CSS handles the
+// slide via a class, not inline styles) instead of the permanent 224px
+// column — that column alone eats over half the width of a phone screen.
+// This ref means nothing above that breakpoint: the CSS only reads
+// `.shell__nav--open` inside the `@media (max-width: 768px)` block, so
+// toggling it on desktop has no visible effect at all.
+const navOpen = ref(false)
+watch(
+  () => route.fullPath,
+  () => {
+    navOpen.value = false
+  },
+)
 
 // "Validate on read and fall back to defaults with a visible warning" —
 // this is the visible part, shown regardless of which screen a corrupted
@@ -67,10 +85,33 @@ const navLinks = computed(() => [
        [data-theme="light"] selector immediately overrides every color
        variable beneath it — no manual DOM code, no watcher needed. -->
   <div class="shell" :data-theme="store.theme">
-    <nav class="shell__nav">
+    <!-- Only visible under the mobile breakpoint (CSS-hidden otherwise) —
+         the permanent sidebar has its own brand mark, so this bar would be
+         pure duplication on desktop/tablet. -->
+    <header class="shell__mobile-bar">
+      <button type="button" class="shell__menu-btn" :aria-expanded="navOpen" aria-label="Open navigation" @click="navOpen = true">
+        <Menu :size="20" />
+      </button>
       <div class="shell__brand">
         <span class="shell__brand-mark"><Zap :size="16" /></span>
         <strong>{{ t('nav.brand') }}</strong>
+      </div>
+    </header>
+
+    <!-- The backdrop only exists (and only intercepts clicks) while the
+         drawer is open — closing on an outside tap is expected mobile-menu
+         behavior, same idea as Modal.vue's backdrop click. -->
+    <div v-if="navOpen" class="shell__backdrop" @click="navOpen = false" />
+
+    <nav class="shell__nav" :class="{ 'shell__nav--open': navOpen }">
+      <div class="shell__nav-top">
+        <div class="shell__brand">
+          <span class="shell__brand-mark"><Zap :size="16" /></span>
+          <strong>{{ t('nav.brand') }}</strong>
+        </div>
+        <button type="button" class="shell__menu-btn shell__menu-btn--close" aria-label="Close navigation" @click="navOpen = false">
+          <X :size="20" />
+        </button>
       </div>
 
       <!-- v-for + :key: Vue needs a stable identity per item to diff the list
@@ -111,6 +152,10 @@ const navLinks = computed(() => [
 </template>
 
 <style scoped>
+/* Two breakpoints, used consistently across every view in the app:
+   768px (tablet — the shell switches from a permanent sidebar to a
+   drawer) and 480px (phone — spacing tightens further, multi-column
+   grids collapse to one). */
 .shell {
   display: flex;
   min-height: 100vh;
@@ -127,12 +172,18 @@ const navLinks = computed(() => [
   background: var(--color-surface);
   border-right: var(--border-width) solid var(--color-border);
 }
+.shell__nav-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
 .shell__brand {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-2);
-  margin-bottom: var(--space-5);
   font-size: var(--text-lg);
 }
 .shell__brand-mark {
@@ -236,4 +287,95 @@ const navLinks = computed(() => [
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
 }
+
+/* ---- mobile top bar + menu buttons ---- */
+.shell__mobile-bar {
+  display: none; /* shown only under the 768px breakpoint below */
+}
+.shell__menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--hit-target);
+  height: var(--hit-target);
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.shell__menu-btn:hover {
+  background: var(--color-surface-raised);
+}
+.shell__menu-btn--close {
+  display: none; /* only shown inside the open drawer, on mobile */
+}
+.shell__backdrop {
+  display: none; /* only rendered (v-if) and relevant on mobile */
+}
+
+/* ---- tablet: sidebar becomes an off-canvas drawer ---- */
+@media (max-width: 768px) {
+  .shell {
+    flex-direction: column;
+  }
+  .shell__mobile-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-surface);
+    border-bottom: var(--border-width) solid var(--color-border);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+  .shell__mobile-bar .shell__brand {
+    padding: 0;
+  }
+
+  .shell__backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: var(--color-overlay);
+    z-index: 30;
+  }
+
+  .shell__nav {
+    position: fixed;
+    inset: 0;
+    /* `width` overrides `inset`'s implicit sizing here (a fixed element
+       with both set is over-constrained), so this - not `right` - is what
+       actually caps the drawer at 75% of the screen, never full-width. */
+    width: 75%;
+    max-width: 300px;
+    z-index: 40;
+    border-right: var(--border-width) solid var(--color-border);
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-100%);
+    transition: transform var(--duration-base) var(--ease-standard);
+    overflow-y: auto;
+  }
+  .shell__nav--open {
+    transform: translateX(0);
+  }
+  .shell__menu-btn--close {
+    display: inline-flex;
+  }
+
+  .shell__content {
+    padding: var(--space-4);
+  }
+}
+
+@media (max-width: 480px) {
+  .shell__content {
+    padding: var(--space-3);
+  }
+}
+
+/* `prefers-reduced-motion` already zeroes every transition duration
+   globally (tokens.css) — the drawer's slide-in respects that for free. */
 </style>

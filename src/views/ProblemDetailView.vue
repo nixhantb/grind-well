@@ -219,13 +219,15 @@ const editorialConfirmed = ref(false)
 .title-row {
   display: flex;
   align-items: baseline;
-  gap: var(--space-4);
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
 }
 .title-row h1 {
   margin: 0;
 }
 .pills-row {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin: var(--space-3) 0;
 }
@@ -247,7 +249,8 @@ const editorialConfirmed = ref(false)
 .run-row {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
   margin-bottom: var(--space-6);
 }
 .run-clock {
