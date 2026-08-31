@@ -41,6 +41,11 @@ const { showHelp } = useGlobalShortcuts()
 const shortcuts = useShortcuts()
 const route = useRoute()
 
+// The marketing landing page ('/') sets `meta.standalone` so it renders
+// full-bleed with none of the app shell's sidebar/nav around it — it's a
+// pitch page a stranger lands on, not a screen inside the tool.
+const isStandalone = computed(() => route.meta.standalone === true)
+
 // ---------- mobile nav drawer ----------
 // Below 768px the sidebar becomes an off-canvas drawer (CSS handles the
 // slide via a class, not inline styles) instead of the permanent 224px
@@ -70,7 +75,7 @@ const storageWarning = computed(() => {
 // `badge` is a count only the Rep Queue link carries — everything else is
 // `undefined`, and Badge.vue itself renders nothing at 0/undefined anyway.
 const navLinks = computed(() => [
-  { to: '/', label: t('nav.dashboard'), icon: LayoutDashboard },
+  { to: '/app', label: t('nav.dashboard'), icon: LayoutDashboard },
   { to: '/patterns', label: t('nav.patterns'), icon: LayoutGrid },
   { to: '/queue', label: t('nav.repQueue'), icon: ListChecks, badge: progressStore.dueQueue.length },
   { to: '/protocols', label: t('nav.protocols'), icon: BookOpen },
@@ -80,11 +85,15 @@ const navLinks = computed(() => [
 </script>
 
 <template>
+  <!-- Standalone routes (the marketing homepage) render with none of the
+       shell chrome below — no sidebar, no nav, just the page itself. -->
+  <RouterView v-if="isStandalone" />
+
   <!-- :data-theme is a reactive attribute binding: the moment
        store.theme changes, Vue updates this attribute, and tokens.css's
        [data-theme="light"] selector immediately overrides every color
        variable beneath it — no manual DOM code, no watcher needed. -->
-  <div class="shell" :data-theme="store.theme">
+  <div v-else class="shell" :data-theme="store.theme">
     <!-- Only visible under the mobile breakpoint (CSS-hidden otherwise) —
          the permanent sidebar has its own brand mark, so this bar would be
          pure duplication on desktop/tablet. -->
