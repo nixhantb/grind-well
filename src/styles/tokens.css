@@ -1,0 +1,187 @@
+/*
+  Design tokens — every color, size, and duration in the app should come
+  from a variable defined here, never a hardcoded value in a component.
+  This is the "single source of truth" a component's <style> block reads
+  from, similar to how you'd centralize brand constants in one static
+  class in C# rather than repeating magic numbers everywhere.
+
+  CSS custom properties (var(--x)) are just runtime-resolved variables:
+  unlike a Sass/LESS variable, they're real values the browser recomputes
+  live, which is what makes the dark/light toggle below possible — no
+  rebuild, no JS re-render, just the browser re-resolving var() lookups
+  the instant the [data-theme] attribute changes.
+*/
+
+/* ---- COLOR: dark-first ----
+   Tone is "serious practice tool", not a marketing site, so the palette
+   stays desaturated and low-contrast-by-default with ONE accent (indigo)
+   spent sparingly. Dark is the bare :root default; [data-theme="light"]
+   below overrides every color token for the light variant. Whichever
+   theme is active, the SAME variable names are used everywhere else in
+   the app — components never know which theme they're in. */
+:root {
+  --color-bg: #0b0b10;
+  --color-surface: #14141c;
+  --color-surface-raised: #1c1c26;
+  --color-border: #2a2a38;
+  --color-border-strong: #3a3a4a;
+
+  --color-text: #e5e5ea;
+  --color-text-muted: #9797a8;
+  --color-text-faint: #6b6b7d;
+
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+  --color-accent-text: #eef2ff;
+
+  /* Difficulty: muted, and NOT distinguished by hue alone (the classic
+     red/green failure case for color-blind readers) — Pill.vue also
+     prefixes an E/M/H letter, so color is reinforcement, not the only signal. */
+  --color-easy: #4d9a6a;
+  --color-easy-bg: rgb(77 154 106 / 16%);
+  --color-medium: #c99a3f;
+  --color-medium-bg: rgb(201 154 63 / 16%);
+  --color-hard: #c15c5c;
+  --color-hard-bg: rgb(193 92 92 / 16%);
+
+  /* A fifth, purely-informational tone (blue) alongside accent/easy/medium/hard —
+     for stat badges like "reps due" or "reps this week" that aren't a
+     difficulty or a rep outcome, so reusing those semantic colors would
+     send the wrong signal (e.g. "due" is not "hard"). */
+  --color-info: #5b9bd1;
+  --color-info-bg: rgb(91 155 209 / 16%);
+
+  --color-focus-ring: rgb(129 140 248 / 55%);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 45%);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 50%);
+  --color-overlay: rgb(0 0 0 / 55%); /* the stall modal's backdrop */
+  --gradient-accent: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+
+  /* Syntax highlighting (Prism token classes -> these vars, in CodeBlock.vue).
+     A separate palette from the UI colors above, on purpose — code needs
+     more distinguishable hues than the rest of the muted UI, but still
+     kept desaturated enough to match the "serious tool" tone rather than
+     a neon editor theme. */
+  --syntax-keyword: #c792ea;
+  --syntax-string: #98c379;
+  --syntax-function: #61afef;
+  --syntax-number: #d19a66;
+  --syntax-class: #e5c07b;
+}
+
+[data-theme='light'] {
+  --color-bg: #f7f7fb;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-border: #e2e2ea;
+  --color-border-strong: #c9c9d6;
+
+  --color-text: #16161d;
+  --color-text-muted: #55555f;
+  --color-text-faint: #83838f;
+
+  --color-accent: #4f46e5;
+  --color-accent-hover: #4338ca;
+  --color-accent-text: #ffffff;
+
+  --color-easy: #2f7a4d;
+  --color-easy-bg: rgb(47 122 77 / 12%);
+  --color-medium: #9c6b12;
+  --color-medium-bg: rgb(156 107 18 / 12%);
+  --color-hard: #a83f3f;
+  --color-hard-bg: rgb(168 63 63 / 12%);
+
+  --color-info: #2f6ca8;
+  --color-info-bg: rgb(47 108 168 / 10%);
+
+  --color-focus-ring: rgb(79 70 229 / 45%);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 8%);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 10%);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 14%);
+  --color-overlay: rgb(0 0 0 / 40%);
+  --gradient-accent: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+
+  --syntax-keyword: #9333ea;
+  --syntax-string: #15803d;
+  --syntax-function: #1d4ed8;
+  --syntax-number: #b45309;
+  --syntax-class: #a16207;
+}
+
+/* ---- TYPE ----
+   One UI sans (Inter) and one mono (JetBrains Mono), both vendored as
+   local files via @fontsource — imported once in main.ts, never a CDN
+   <link>, so the app works offline. This is primarily a CODE app, so the
+   mono scale is sized as a first-class citizen (--text-code* reads
+   comfortably at rest) rather than an afterthought squeezed below the UI
+   scale. */
+:root {
+  --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'Cascadia Code', Consolas, monospace;
+
+  --text-xs: 0.75rem; /* 12px — pill labels, meta text */
+  --text-sm: 0.875rem; /* 14px — secondary UI text */
+  --text-base: 1rem; /* 16px — body */
+  --text-lg: 1.125rem; /* 18px — section headers */
+  --text-xl: 1.375rem; /* 22px — page titles */
+  --text-2xl: 1.75rem; /* 28px — hero numbers (cold reproduction rate) */
+
+  --text-code-sm: 0.8125rem; /* 13px — inline code spans in prose */
+  --text-code: 0.9375rem; /* 15px — code blocks at rest */
+  --text-code-lg: 1.0625rem; /* 17px — the trainer's typing surface */
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-code: 1.6; /* extra generous: this is a reading app first */
+}
+
+/* ---- SPACE ----
+   4px base scale. Named by multiple-of-4, not t-shirt sizes, so the
+   relationship to the base unit stays legible in every component's CSS. */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+}
+
+/* ---- SHAPE ---- */
+:root {
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px; /* pills */
+  --border-width: 1px;
+  --hit-target: 40px; /* minimum interactive element size */
+}
+
+/* ---- MOTION ----
+   Near none, per the tone: this is a metronome, not a language app.
+   Every transition in the app should reference these two durations
+   rather than picking its own number. */
+:root {
+  --duration-fast: 100ms;
+  --duration-base: 150ms;
+  --ease-standard: ease-out;
+}
+
+/* prefers-reduced-motion is a hard constraint, not a nice-to-have —
+   collapse every transition/animation to effectively instant. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
