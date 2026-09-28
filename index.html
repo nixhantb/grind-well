@@ -19,12 +19,17 @@
     <title>GrindWell</title>
   </head>
   <body>
-    <!-- Vue replaces this once main.ts's initial IndexedDB read resolves
-         (usually a few ms) — a plain, un-styled placeholder so a slow read
-         shows something instead of a blank white flash, not a real
-         loading UI. -->
-    <div id="app" style="display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #0b0b10; color: #6b6b7d; font: 14px system-ui, sans-serif;">
-      Loading…
+    <!-- Vue mounts INTO #app but never clears attributes on #app itself —
+         only its children get replaced once main.ts's initial IndexedDB
+         read resolves (usually a few ms). So only `background` (harmless
+         to leave behind; the real app's own .shell covers it completely)
+         lives on #app itself; the actual placeholder — and every
+         layout-affecting style — is on a child that gets removed with the
+         rest of #app's content the moment Vue mounts. -->
+    <div id="app" style="background: #0b0b10;">
+      <div style="position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: #6b6b7d; font: 14px system-ui, sans-serif;">
+        Loading…
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
