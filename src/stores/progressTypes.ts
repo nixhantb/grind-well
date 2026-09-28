@@ -1,34 +1,52 @@
 // Shapes for the user's PRACTICE data — distinct from src/content/types.ts,
 // which is the static curriculum. These get mutated constantly and
-// persisted to localStorage, so every one of them needs a runtime type
-// guard alongside it: TypeScript's types vanish at build time, but a
-// corrupted or hand-edited localStorage blob is exactly the kind of input
-// TypeScript can't protect against — only a real runtime check can.
+// persisted to localStorage, so every one is a Zod schema rather than a
+// TS interface + a hand-written type guard: a corrupted or hand-edited
+// localStorage blob is exactly the kind of input only a real runtime
+// check protects against, and Zod derives both that check AND the
+// TypeScript type from the one schema, instead of the two staying in
+// sync by hand.
+import { z } from 'zod'
 
-export type RepResult = 'clean' | 'assisted' | 'failed'
+export const repResultSchema = z.enum(['clean', 'assisted', 'failed'])
+export type RepResult = z.infer<typeof repResultSchema>
 
-export interface RepLog {
-  problemId: number
-  repNumber: number
-  date: string // ISO
-  result: RepResult
-  seconds: number
-  stuckLine: string | null
-  usedReference: boolean
-}
+export const repLogSchema = z.object({
+  problemId: z.number(),
+  repNumber: z.number(),
+  date: z.string(), // ISO
+  result: repResultSchema,
+  seconds: z.number(),
+  stuckLine: z.string().nullable(),
+  usedReference: z.boolean(),
+  // Nullable AND optional: rep logs written before this field existed
+  // have no `methodSignature` key at all, and they must keep loading
+  // rather than get flagged corrupted.
+  methodSignature: z.string().nullable().optional(),
+})
+export type RepLog = z.infer<typeof repLogSchema>
 
-export type ProblemStatus = 'not-started' | 'in-progress' | 'solved' | 'graduated'
+export const problemStatusSchema = z.enum(['not-started', 'in-progress', 'solved', 'graduated'])
+export type ProblemStatus = z.infer<typeof problemStatusSchema>
 
-export interface ProblemState {
-  problemId: number
-  status: ProblemStatus
-  reps: RepLog[]
-  nextDueDate: string | null
-  solutionCode: string
-  notes: string
-}
+export const problemStateSchema = z.object({
+  problemId: z.number(),
+  status: problemStatusSchema,
+  reps: z.array(repLogSchema),
+  nextDueDate: z.string().nullable(),
+  solutionCode: z.string(),
+  notes: z.string(),
+})
+export type ProblemState = z.infer<typeof problemStateSchema>
 
-export type ProblemStatesMap = Record<number, ProblemState>
+// Keyed by problem id — JSON object keys are always strings, so this
+// validates that each one at least looks like a number rather than
+// trusting a corrupted blob's garbage keys.
+export const problemStatesMapSchema = z.record(
+  z.string().refine((key) => !Number.isNaN(Number(key)), 'expected a numeric key'),
+  problemStateSchema,
+)
+export type ProblemStatesMap = z.infer<typeof problemStatesMapSchema>
 
 export function defaultProblemState(problemId: number): ProblemState {
   return {
@@ -39,47 +57,4 @@ export function defaultProblemState(problemId: number): ProblemState {
     solutionCode: '',
     notes: '',
   }
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null
-}
-
-export function isRepResult(v: unknown): v is RepResult {
-  return v === 'clean' || v === 'assisted' || v === 'failed'
-}
-
-export function isRepLog(v: unknown): v is RepLog {
-  if (!isRecord(v)) return false
-  return (
-    typeof v.problemId === 'number' &&
-    typeof v.repNumber === 'number' &&
-    typeof v.date === 'string' &&
-    isRepResult(v.result) &&
-    typeof v.seconds === 'number' &&
-    (v.stuckLine === null || typeof v.stuckLine === 'string') &&
-    typeof v.usedReference === 'boolean'
-  )
-}
-
-export function isProblemStatus(v: unknown): v is ProblemStatus {
-  return v === 'not-started' || v === 'in-progress' || v === 'solved' || v === 'graduated'
-}
-
-export function isProblemState(v: unknown): v is ProblemState {
-  if (!isRecord(v)) return false
-  return (
-    typeof v.problemId === 'number' &&
-    isProblemStatus(v.status) &&
-    Array.isArray(v.reps) &&
-    v.reps.every(isRepLog) &&
-    (v.nextDueDate === null || typeof v.nextDueDate === 'string') &&
-    typeof v.solutionCode === 'string' &&
-    typeof v.notes === 'string'
-  )
-}
-
-export function isProblemStatesMap(v: unknown): v is ProblemStatesMap {
-  if (!isRecord(v)) return false
-  return Object.entries(v).every(([key, value]) => !Number.isNaN(Number(key)) && isProblemState(value))
 }

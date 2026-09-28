@@ -10,10 +10,12 @@
 //
 // This one owns exactly one global `keydown` listener for the whole app,
 // attached once here rather than once per screen — "global event
-// listeners done correctly" means exactly two things: skip it while the
-// user is typing anywhere, and remove it in onUnmounted so navigating
-// away (or, in tests, unmounting) can never leave a dangling listener.
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+// listeners done correctly" means skipping it while the user is typing
+// anywhere; VueUse's `useEventListener` handles the add/remove-on-unmount
+// half so navigating away (or, in tests, unmounting) can't leave a
+// dangling listener.
+import { ref, computed } from 'vue'
+import { useEventListener } from '@vueuse/core'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useProgressStore } from '../stores/progress'
@@ -89,8 +91,7 @@ export function useGlobalShortcuts() {
     }
   }
 
-  onMounted(() => window.addEventListener('keydown', handleKeydown))
-  onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
+  useEventListener(window, 'keydown', handleKeydown)
 
   return { showHelp }
 }

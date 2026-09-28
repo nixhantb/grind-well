@@ -67,7 +67,13 @@ const resolved = computed<Resolved>(() => {
   return { status: 'not-found' }
 })
 
-function handleLogRep(payload: { result: RepResult; seconds: number; stuckLine: string | null; usedReference: boolean }) {
+function handleLogRep(payload: {
+  result: RepResult
+  seconds: number
+  stuckLine: string | null
+  usedReference: boolean
+  methodSignature: string | null
+}) {
   if (resolved.value.status !== 'ready' || resolved.value.problemId === null) return
   const problemId = resolved.value.problemId
   const repNumber = deriveCurrentRepNumber(store.getState(problemId).reps)

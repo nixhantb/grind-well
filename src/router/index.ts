@@ -10,12 +10,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 // screen becomes its own JS chunk, fetched only when the user navigates there.
 // This is the Vue-Router equivalent of lazy-loading an assembly on first use.
 const routes = [
-  // The brand/marketing landing page. `meta: { standalone: true }` tells
-  // App.vue to render this one with no sidebar/nav chrome around it — it's
-  // a pitch page, not a screen inside the tool. Clicking through on it
-  // lands on '/app', which is the real product (former '/').
-  { path: '/', name: 'home', component: () => import('../views/HomeView.vue'), meta: { standalone: true } },
-  { path: '/app', name: 'dashboard', component: () => import('../views/DashboardView.vue') },
+  { path: '/', name: 'dashboard', component: () => import('../views/DashboardView.vue') },
   { path: '/patterns', name: 'patterns', component: () => import('../views/PatternsView.vue') },
   { path: '/patterns/:id', name: 'pattern-detail', component: () => import('../views/PatternDetailView.vue'), props: true },
   { path: '/problems/:id', name: 'problem-detail', component: () => import('../views/ProblemDetailView.vue'), props: true },
@@ -23,7 +18,6 @@ const routes = [
   { path: '/queue', name: 'queue', component: () => import('../views/QueueView.vue') },
   { path: '/protocols', name: 'protocols', component: () => import('../views/ProtocolsView.vue') },
   { path: '/data', name: 'data', component: () => import('../views/DataView.vue') },
-  { path: '/style-guide', name: 'style-guide', component: () => import('../views/StyleGuideView.vue') },
 ]
 
 export const router = createRouter({

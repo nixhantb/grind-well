@@ -2,15 +2,17 @@
 // here (no Blob, no <a download>), so it's testable the same way as the
 // rest of lib/. DataView.vue handles turning this into an actual file
 // download / upload.
-import type { Theme } from '../stores/app'
-import { isProblemStatesMap, type ProblemStatesMap } from '../stores/progressTypes'
+import { z } from 'zod'
+import { themeSchema, type Theme } from '../stores/app'
+import { problemStatesMapSchema, type ProblemStatesMap } from '../stores/progressTypes'
 
-export interface ExportBundle {
-  version: 1
-  exportedAt: string
-  theme: Theme
-  problemStates: ProblemStatesMap
-}
+export const exportBundleSchema = z.object({
+  version: z.literal(1),
+  exportedAt: z.string(),
+  theme: themeSchema,
+  problemStates: problemStatesMapSchema,
+})
+export type ExportBundle = z.infer<typeof exportBundleSchema>
 
 export function buildExportBundle(theme: Theme, problemStates: ProblemStatesMap): ExportBundle {
   return {
@@ -24,19 +26,8 @@ export function buildExportBundle(theme: Theme, problemStates: ProblemStatesMap)
   }
 }
 
-function isTheme(v: unknown): v is Theme {
-  return v === 'dark' || v === 'light'
-}
-
 export function isExportBundle(v: unknown): v is ExportBundle {
-  if (typeof v !== 'object' || v === null) return false
-  const b = v as Record<string, unknown>
-  return (
-    b.version === 1 &&
-    typeof b.exportedAt === 'string' &&
-    isTheme(b.theme) &&
-    isProblemStatesMap(b.problemStates)
-  )
+  return exportBundleSchema.safeParse(v).success
 }
 
 export function exportFileName(date = new Date()): string {

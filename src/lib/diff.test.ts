@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { diffChars, normalizeWhitespace, computeDiff, firstDivergentLine } from './diff'
+import {
+  diffChars,
+  normalizeWhitespace,
+  computeDiff,
+  firstDivergentLine,
+  extractSignature,
+  formatSignature,
+  normalizeIdentifiers,
+} from './diff'
 
 describe('diffChars', () => {
   it('returns a single equal segment for identical strings', () => {
@@ -107,6 +115,116 @@ describe('computeDiff', () => {
   it('is 0% similar for an empty reference matched against non-empty typed text', () => {
     const result = computeDiff('', 'abc', { ignoreWhitespace: false })
     expect(result.similarity).toBe(0)
+  })
+})
+
+describe('extractSignature', () => {
+  it('pulls the method name and param names out of a typical LeetCode-shaped solution', () => {
+    const code = [
+      'public class Solution {',
+      '    public int[] TwoSum(int[] nums, int target) {',
+      '        return null;',
+      '    }',
+      '}',
+    ].join('\n')
+    expect(extractSignature(code)).toEqual({ name: 'TwoSum', params: ['nums', 'target'] })
+  })
+
+  it('does not need a modifier keyword to find the method', () => {
+    const code = 'int[] TwoSum(int[] nums, int target) {\n}'
+    expect(extractSignature(code)).toEqual({ name: 'TwoSum', params: ['nums', 'target'] })
+  })
+
+  it('is not fooled by control-flow keywords that look like a call', () => {
+    const code = ['public int[] TwoSum(int[] nums, int target) {', '    if (nums.Length == 0) return null;', '}'].join('\n')
+    expect(extractSignature(code)).toEqual({ name: 'TwoSum', params: ['nums', 'target'] })
+  })
+
+  it('returns null when nothing method-shaped is found', () => {
+    expect(extractSignature('if (x) { return 1; }')).toBeNull()
+  })
+
+  it('is not fooled by a constructor call on its own line', () => {
+    const code = ['public class Solution {', '    var s = new Solution();', '}'].join('\n')
+    expect(extractSignature(code)).toBeNull()
+  })
+
+  // Regression test for a ReDoS in the old signature regex: a run of
+  // whitespace with no method in it could be split between two adjacent
+  // quantifiers in exponentially many ways, so the engine spent seconds
+  // backtracking through all of them before giving up. This is reachable
+  // with attacker-controlled data — a crafted `solutionCode` imported via
+  // a backup file becomes the reference code diffed on every keystroke.
+  it('stays fast on a long whitespace-only line (ReDoS regression)', () => {
+    const start = performance.now()
+    expect(extractSignature(' '.repeat(50_000) + 'x')).toBeNull()
+    expect(performance.now() - start).toBeLessThan(200)
+  })
+
+  it('handles generic/array param types, keeping only the param name', () => {
+    const code = 'public IList<IList<int>> Combine(List<int> candidates, int target) {\n}'
+    expect(extractSignature(code)).toEqual({ name: 'Combine', params: ['candidates', 'target'] })
+  })
+})
+
+describe('formatSignature', () => {
+  it('formats a signature as Name(param, param)', () => {
+    expect(formatSignature({ name: 'TwoSum', params: ['nums', 'target'] })).toBe('TwoSum(nums, target)')
+  })
+
+  it('returns null when there is no signature', () => {
+    expect(formatSignature(null)).toBeNull()
+  })
+})
+
+describe('normalizeIdentifiers', () => {
+  it('replaces the method name and each param name with a positional placeholder', () => {
+    const code = 'int[] TwoSum(int[] nums, int target) {\n  return nums.Length + target;\n}'
+    const signature = { name: 'TwoSum', params: ['nums', 'target'] }
+    expect(normalizeIdentifiers(code, signature)).toBe(
+      'int[] §M§(int[] §P0§, int §P1§) {\n  return §P0§.Length + §P1§;\n}',
+    )
+  })
+
+  it('only replaces whole-word matches, not substrings inside other identifiers', () => {
+    const code = 'int n = nums.Length;'
+    const signature = { name: 'f', params: ['n'] }
+    expect(normalizeIdentifiers(code, signature)).toBe('int §P0§ = nums.Length;')
+  })
+
+  it('returns the code unchanged when there is no signature', () => {
+    expect(normalizeIdentifiers('int x = 1;', null)).toBe('int x = 1;')
+  })
+})
+
+describe('computeDiff with ignoreNames', () => {
+  it('scores a renamed method/params as a full match', () => {
+    const reference = 'public int[] TwoSum(int[] nums, int target) {\n    return null;\n}'
+    const typed = 'public int[] TwoSum(int[] nums1, int nums2) {\n    return null;\n}'
+    const result = computeDiff(reference, typed, { ignoreWhitespace: true, ignoreNames: true })
+    expect(result.similarity).toBe(1)
+  })
+
+  it('still penalizes a real logic difference even with names ignored', () => {
+    const reference = 'public int[] TwoSum(int[] nums, int target) {\n    return null;\n}'
+    const typed = 'public int[] TwoSum(int[] arr, int goal) {\n    return new int[0];\n}'
+    const result = computeDiff(reference, typed, { ignoreWhitespace: true, ignoreNames: true })
+    expect(result.similarity).toBeLessThan(1)
+  })
+
+  it('without ignoreNames, a rename alone is scored as a real difference', () => {
+    const reference = 'public int[] TwoSum(int[] nums, int target) {\n    return null;\n}'
+    const typed = 'public int[] TwoSum(int[] nums1, int nums2) {\n    return null;\n}'
+    const result = computeDiff(reference, typed, { ignoreWhitespace: true, ignoreNames: false })
+    expect(result.similarity).toBeLessThan(1)
+  })
+
+  it('the visible diff segments still show the real (non-placeholder) text even with ignoreNames on', () => {
+    const reference = 'TwoSum(nums)'
+    const typed = 'TwoSum(nums1)'
+    const result = computeDiff(reference, typed, { ignoreWhitespace: true, ignoreNames: true })
+    const rendered = result.segments.map((s) => s.text).join('')
+    expect(rendered.includes('§')).toBe(false)
   })
 })
 

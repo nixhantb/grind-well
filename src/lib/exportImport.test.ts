@@ -15,6 +15,7 @@ const sampleProblemStates: ProblemStatesMap = {
         seconds: 612,
         stuckLine: null,
         usedReference: false,
+        methodSignature: 'MoveZeroes(nums)',
       },
       {
         problemId: 7,
@@ -24,6 +25,7 @@ const sampleProblemStates: ProblemStatesMap = {
         seconds: 900,
         stuckLine: 'while (fast != null && fast.next != null)',
         usedReference: true,
+        methodSignature: null,
       },
     ],
     nextDueDate: null,

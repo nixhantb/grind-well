@@ -12,7 +12,7 @@ import { problems } from '../content'
 import type { Problem } from '../content/types'
 import {
   defaultProblemState,
-  isProblemStatesMap,
+  problemStatesMapSchema,
   type ProblemState,
   type ProblemStatus,
   type ProblemStatesMap,
@@ -22,7 +22,7 @@ import {
 const STORAGE_KEY = 'fluency:progress:v1'
 
 export const useProgressStore = defineStore('progress', () => {
-  const { value: initial, warning } = readFromStorage<ProblemStatesMap>(STORAGE_KEY, isProblemStatesMap, {})
+  const { value: initial, warning } = readFromStorage(STORAGE_KEY, problemStatesMapSchema, {})
 
   // VUE CONCEPT: `reactive` vs `ref`.
   // `ref` boxes any single value behind `.value`; `reactive` instead

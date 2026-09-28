@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { useIntervalFn, useTimeoutFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
-import { computeDiff, firstDivergentLine } from '../lib/diff'
+import { computeDiff, firstDivergentLine, extractSignature, formatSignature } from '../lib/diff'
 import { formatSeconds } from '../lib/format'
 import type { RepResult } from '../stores/progressTypes'
 import Button from './Button.vue'
 import Pill from './Pill.vue'
 import Modal from './Modal.vue'
+import CodeEditor from './CodeEditor.vue'
 
 const { t } = useI18n()
 
@@ -24,20 +26,22 @@ interface Props {
 const props = defineProps<Props>()
 
 const emit = defineEmits<{
-  logRep: [payload: { result: RepResult; seconds: number; stuckLine: string | null; usedReference: boolean }]
+  logRep: [
+    payload: {
+      result: RepResult
+      seconds: number
+      stuckLine: string | null
+      usedReference: boolean
+      methodSignature: string | null
+    },
+  ]
 }>()
 
 // ---------- refs to the DOM ----------
-// VUE CONCEPT: a template ref.
-// `ref<HTMLTextAreaElement | null>(null)` here, `<textarea ref="editorRef">`
-// in the template — Vue fills in the real DOM element after mount. This is
-// the escape hatch for anything Vue's declarative bindings can't do:
-// imperatively calling `.focus()` is a method call on the element itself,
-// not a piece of state to bind.
-const editorRef = ref<HTMLTextAreaElement | null>(null)
-// `ref` on a custom component normally gives you the component INSTANCE,
-// not its DOM node — this works because Button.vue explicitly
-// `defineExpose`s a `.focus()` method for exactly this case.
+// `ref` on a custom component gives you the component INSTANCE, not a DOM
+// node — this works because CodeEditor.vue (and Button.vue, below)
+// explicitly `defineExpose`s a `.focus()` method for exactly this case.
+const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
 const firstModalButtonRef = ref<InstanceType<typeof Button> | null>(null)
 
 // ---------- core state ----------
@@ -49,6 +53,12 @@ const peekSecondsRemaining = ref<number | null>(null)
 const stalled = ref(false)
 const showPasteWarning = ref(false)
 const ignoreWhitespace = ref(true)
+// Renaming the method/its params doesn't change the mechanics you're
+// actually drilling — this stays on by default so the % match (and the
+// auto-suggested clean/assisted/failed result) don't punish a rename.
+// It's still a toggle, not baked in silently, so a rep can be inspected
+// strictly when that's actually what's being checked.
+const ignoreNames = ref(true)
 const selectedResult = ref<RepResult | null>(null)
 const stuckLine = ref('')
 
@@ -56,47 +66,48 @@ const usedReference = computed(() => peekCount.value > 0)
 const isPeeking = computed(() => peekSecondsRemaining.value !== null)
 
 // ---------- timers ----------
-// Plain variables, not refs — nothing in the template reads a timer
-// HANDLE, only the state the timers update (elapsedSeconds, etc.), so
-// there's no reason to pay for reactivity tracking on these.
-let elapsedTimerId: ReturnType<typeof setInterval> | undefined
-let stallCheckTimerId: ReturnType<typeof setInterval> | undefined
-let peekTimerId: ReturnType<typeof setInterval> | undefined
-let pasteWarningTimeoutId: ReturnType<typeof setTimeout> | undefined
+// VueUse's interval/timeout composables auto-pause themselves on unmount
+// (no more `let timerId; onUnmounted(() => clearInterval(timerId))` per
+// timer, and no way to forget one) — `immediate: false` because these
+// start on specific app events (mount, peek, paste), not on setup.
 let lastActivityAt = Date.now()
 
+const { pause: pauseElapsed, resume: resumeElapsed } = useIntervalFn(() => elapsedSeconds.value++, 1000, {
+  immediate: false,
+})
+const { pause: pauseStallCheck, resume: resumeStallCheck } = useIntervalFn(() => checkStall(), 1000, {
+  immediate: false,
+})
+const { pause: pausePeekCountdown, resume: resumePeekCountdown } = useIntervalFn(
+  () => {
+    if (peekSecondsRemaining.value === null) return
+    peekSecondsRemaining.value--
+    if (peekSecondsRemaining.value <= 0) {
+      pausePeekCountdown()
+      peekSecondsRemaining.value = null
+      lastActivityAt = Date.now() // a fresh 90s window starts once the reference is hidden again
+      editorRef.value?.focus()
+    }
+  },
+  1000,
+  { immediate: false },
+)
+
 function startTimers() {
-  elapsedTimerId = setInterval(() => {
-    elapsedSeconds.value++
-  }, 1000)
-  stallCheckTimerId = setInterval(checkStall, 1000)
+  resumeElapsed()
+  resumeStallCheck()
 }
 
 function stopTypingTimers() {
-  clearInterval(elapsedTimerId)
-  clearInterval(stallCheckTimerId)
-  if (peekTimerId !== undefined) {
-    clearInterval(peekTimerId)
-    peekTimerId = undefined
-  }
+  pauseElapsed()
+  pauseStallCheck()
+  pausePeekCountdown()
   peekSecondsRemaining.value = null
 }
 
-// VUE CONCEPT: `onMounted` / `onUnmounted`.
-// Lifecycle hooks — code that runs when this component's DOM is actually
-// inserted, and when it's about to be torn down. Closest C# analogy:
-// something implementing IDisposable, where onMounted is the constructor
-// doing setup and onUnmounted is Dispose() releasing it. It matters here
-// specifically because `setInterval` keeps running even after a component
-// is gone — navigate away mid-rep without this cleanup, and the timer
-// keeps firing into a component that no longer exists, silently leaking.
 onMounted(() => {
   editorRef.value?.focus()
   startTimers()
-})
-onUnmounted(() => {
-  stopTypingTimers()
-  if (pasteWarningTimeoutId !== undefined) clearTimeout(pasteWarningTimeoutId)
 })
 
 function checkStall() {
@@ -117,19 +128,29 @@ function onKeystroke() {
   lastActivityAt = Date.now()
 }
 
+// CodeEditor emits its own `update:modelValue` (CodeMirror, not a native
+// <textarea>, so there's no plain DOM `input` event to listen for) —
+// this both writes through to `typedCode` and counts as activity for the
+// stall timer, replacing the old `v-model` + `@input="onKeystroke"` pair.
+function onEditorInput(value: string) {
+  typedCode.value = value
+  onKeystroke()
+}
+
 // ---------- paste blocking ----------
 // A single `paste` event handler is enough to cover Ctrl+V, the right-click
 // context menu's Paste item, AND middle-click paste on Linux (X11's
 // primary-selection paste) — all three dispatch the same ClipboardEvent in
 // every current browser; there's no separate code path per input method.
-// `@drop.prevent` closes the other obvious way text can arrive without
-// being typed (dragging a selection into the textarea).
+// CodeEditor's own `drop`/`dragover` handlers close the other obvious way
+// text can arrive without being typed (dragging a selection in), and both
+// funnel into the same `pasteAttempt` event this listens for.
+const { start: startPasteWarningTimeout } = useTimeoutFn(() => (showPasteWarning.value = false), 2500, {
+  immediate: false,
+})
 function onPasteAttempt() {
   showPasteWarning.value = true
-  if (pasteWarningTimeoutId !== undefined) clearTimeout(pasteWarningTimeoutId)
-  pasteWarningTimeoutId = setTimeout(() => {
-    showPasteWarning.value = false
-  }, 2500)
+  startPasteWarningTimeout()
 }
 
 // ---------- peek ----------
@@ -139,17 +160,7 @@ function startPeek() {
   peekSecondsRemaining.value = 20
   stalled.value = false
   lastActivityAt = Date.now()
-  peekTimerId = setInterval(() => {
-    if (peekSecondsRemaining.value === null) return
-    peekSecondsRemaining.value--
-    if (peekSecondsRemaining.value <= 0) {
-      clearInterval(peekTimerId)
-      peekTimerId = undefined
-      peekSecondsRemaining.value = null
-      lastActivityAt = Date.now() // a fresh 90s window starts once the reference is hidden again
-      editorRef.value?.focus()
-    }
-  }, 1000)
+  resumePeekCountdown()
 }
 
 // ---------- the 90-second stall rule ----------
@@ -176,11 +187,20 @@ const timerTone = computed(() => {
 })
 
 // ---------- submit -> review ----------
-// Mechanics-only similarity (always whitespace-insensitive), used to
-// suggest a result — independent of the DISPLAY toggle below, so flipping
-// that toggle to inspect whitespace never changes what gets suggested.
+// The method name + param list actually typed (best-effort-parsed — see
+// extractSignature), independent of whatever the reference solution
+// called them. Computed once submission happens, since that's the only
+// point a rep gets logged/persisted.
+const submittedSignature = computed(() => extractSignature(typedCode.value))
+const submittedSignatureLabel = computed(() => formatSignature(submittedSignature.value))
+
+// Mechanics-only similarity (always whitespace- AND name-insensitive),
+// used to suggest a result — independent of the DISPLAY toggles below, so
+// flipping those to inspect whitespace/naming never changes what gets
+// suggested. Renaming the method or its parameters is not a mechanics
+// failure; only the code between the braces is what's being drilled.
 const mechanicsSimilarity = computed(
-  () => computeDiff(props.referenceCode, typedCode.value, { ignoreWhitespace: true }).similarity,
+  () => computeDiff(props.referenceCode, typedCode.value, { ignoreWhitespace: true, ignoreNames: true }).similarity,
 )
 const suggestedResult = computed<RepResult>(() => {
   if (usedReference.value) return 'assisted' // "Any peek marks the rep assisted, never clean"
@@ -197,13 +217,23 @@ function submit() {
   stuckLine.value = firstDivergentLine(props.referenceCode, typedCode.value) ?? ''
 }
 
-// The diff shown on screen DOES respect the whitespace toggle — this is
-// the "inspect it either way" view, separate from the fixed-criteria
-// suggestion above.
+// The diff shown on screen DOES respect both toggles — this is the
+// "inspect it either way" view, separate from the fixed-criteria
+// suggestion above. The highlighted characters are always the REAL typed
+// text (ignoreNames never swaps in placeholders for display, see
+// computeDiff) — only the resulting % match is affected.
 const diffResult = computed(() =>
-  computeDiff(props.referenceCode, typedCode.value, { ignoreWhitespace: ignoreWhitespace.value }),
+  computeDiff(props.referenceCode, typedCode.value, {
+    ignoreWhitespace: ignoreWhitespace.value,
+    ignoreNames: ignoreNames.value,
+  }),
 )
 const similarityPercent = computed(() => Math.round(diffResult.value.similarity * 100))
+const similarityTone = computed(() => {
+  if (similarityPercent.value >= 95) return 'easy'
+  if (similarityPercent.value >= 75) return 'medium'
+  return 'hard'
+})
 
 const stuckLineRequired = computed(() => selectedResult.value !== 'clean')
 const canSubmitLog = computed(() => {
@@ -221,6 +251,7 @@ function submitLog() {
     seconds: elapsedSeconds.value,
     stuckLine: stuckLine.value.trim() || null,
     usedReference: usedReference.value,
+    methodSignature: submittedSignatureLabel.value,
   })
   // The parent (TrainerView) is responsible for persisting this via the
   // store — this component only needs to know "done", so it can offer
@@ -257,42 +288,65 @@ function practiceAgain() {
     </header>
 
     <template v-if="phase === 'typing'">
-      <div class="reference-row">
-        <Button variant="secondary" :disabled="isPeeking" @click="startPeek">
-          {{ isPeeking ? t('trainer.peeking', { seconds: peekSecondsRemaining }) : t('trainer.peek') }}
-        </Button>
-        <span v-if="peekCount > 0" class="peek-count">{{ t('trainer.peekedWarning', { count: peekCount }) }}</span>
+      <div class="typing-toolbar">
+        <div class="reference-row">
+          <Button variant="secondary" :disabled="isPeeking" @click="startPeek">
+            {{ isPeeking ? t('trainer.peeking', { seconds: peekSecondsRemaining }) : t('trainer.peek') }}
+          </Button>
+          <span v-if="peekCount > 0" class="peek-count">{{ t('trainer.peekedWarning', { count: peekCount }) }}</span>
+        </div>
+        <p class="detected-signature">
+          <Pill v-if="submittedSignatureLabel" tone="accent">{{ t('trainer.detectedMethod') }}</Pill>
+          <code v-if="submittedSignatureLabel">{{ submittedSignatureLabel }}</code>
+          <span v-else class="detected-signature--muted">{{ t('trainer.noMethodDetectedYet') }}</span>
+        </p>
       </div>
       <pre v-if="isPeeking" class="reference-block"><code>{{ referenceCode }}</code></pre>
 
       <p v-if="showPasteWarning" class="paste-warning" role="alert">{{ t('trainer.pasteWarning') }}</p>
 
-      <textarea
+      <CodeEditor
         ref="editorRef"
-        v-model="typedCode"
-        class="editor"
-        spellcheck="false"
-        autocomplete="off"
-        autocorrect="off"
-        autocapitalize="off"
-        :aria-label="t('trainer.editorAriaLabel')"
+        :model-value="typedCode"
+        :ariaLabel="t('trainer.editorAriaLabel')"
         :placeholder="t('trainer.editorPlaceholder')"
-        @paste.prevent="onPasteAttempt"
-        @drop.prevent="onPasteAttempt"
-        @dragover.prevent
-        @input="onKeystroke"
+        :block-paste="true"
+        @update:model-value="onEditorInput"
+        @paste-attempt="onPasteAttempt"
       />
 
       <Button variant="primary" @click="submit">{{ t('trainer.submit') }}</Button>
     </template>
 
     <template v-else>
-      <div class="review-controls">
-        <label class="toggle">
-          <input v-model="ignoreWhitespace" type="checkbox" />
-          {{ t('trainer.ignoreWhitespace') }}
-        </label>
-        <p class="similarity">{{ t('trainer.similarityMatch', { percent: similarityPercent }) }}</p>
+      <div class="review-summary">
+        <div class="match-stat">
+          <span class="match-stat__value" :class="`match-stat__value--${similarityTone}`">{{ similarityPercent }}%</span>
+          <span class="match-stat__label">{{ t('trainer.similarityLabel') }}</span>
+        </div>
+        <div class="review-summary__meta">
+          <p class="detected-signature">
+            <Pill v-if="submittedSignatureLabel" tone="accent">{{ t('trainer.detectedMethod') }}</Pill>
+            <code v-if="submittedSignatureLabel">{{ submittedSignatureLabel }}</code>
+            <span v-else class="detected-signature--muted">{{ t('trainer.noMethodDetected') }}</span>
+          </p>
+          <div class="review-controls">
+            <label class="toggle">
+              <input v-model="ignoreWhitespace" type="checkbox" />
+              {{ t('trainer.ignoreWhitespace') }}
+            </label>
+            <label class="toggle">
+              <input v-model="ignoreNames" type="checkbox" />
+              {{ t('trainer.ignoreNames') }}
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="diff-legend">
+        <span class="legend-item"><span class="legend-swatch legend-swatch--equal" />{{ t('trainer.legendMatched') }}</span>
+        <span class="legend-item"><span class="legend-swatch legend-swatch--delete" />{{ t('trainer.legendMissing') }}</span>
+        <span class="legend-item"><span class="legend-swatch legend-swatch--insert" />{{ t('trainer.legendExtra') }}</span>
       </div>
 
       <pre class="diff-block"><code
@@ -385,12 +439,23 @@ function practiceAgain() {
   color: var(--color-hard);
 }
 
+.typing-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
 .reference-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-3);
 }
 .peek-count {
   font-size: var(--text-sm);
@@ -403,6 +468,7 @@ function practiceAgain() {
   background: var(--color-bg);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
   font-family: var(--font-mono);
   font-size: var(--text-code);
   line-height: var(--leading-code);
@@ -418,33 +484,74 @@ function practiceAgain() {
   margin-bottom: var(--space-2);
 }
 
-.editor {
-  width: 100%;
-  min-height: 320px;
-  padding: var(--space-4);
+.review-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-5);
   margin-bottom: var(--space-4);
-  background: var(--color-bg);
-  color: var(--color-text);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface);
   border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+}
+.match-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 88px;
+}
+.match-stat__value {
   font-family: var(--font-mono);
-  font-size: var(--text-code);
-  line-height: var(--leading-code);
-  resize: vertical;
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  line-height: 1;
 }
-.editor:focus-visible {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-focus-ring);
+.match-stat__value--easy {
+  color: var(--color-easy);
 }
-
+.match-stat__value--medium {
+  color: var(--color-medium);
+}
+.match-stat__value--hard {
+  color: var(--color-hard);
+}
+.match-stat__label {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: var(--space-1);
+}
+.review-summary__meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 220px;
+}
+.detected-signature {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.detected-signature code {
+  font-family: var(--font-mono);
+  font-size: var(--text-code-sm);
+  background: var(--color-bg);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+}
+.detected-signature--muted {
+  color: var(--color-text-faint);
+}
 .review-controls {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
+  gap: var(--space-2) var(--space-4);
   font-size: var(--text-sm);
 }
 .toggle {
@@ -453,9 +560,34 @@ function practiceAgain() {
   gap: var(--space-2);
   color: var(--color-text-muted);
 }
-.similarity {
-  font-weight: 600;
-  margin: 0;
+
+.diff-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+.legend-swatch--equal {
+  background: var(--color-border-strong);
+}
+.legend-swatch--delete {
+  background: var(--color-hard);
+}
+.legend-swatch--insert {
+  background: var(--color-medium);
 }
 
 /* Reusing the muted red/amber semantic colors already defined for

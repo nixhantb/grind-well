@@ -238,8 +238,7 @@ const quickLinks = computed(() => [
   margin-right: var(--space-2);
 }
 
-.suggestion,
-.due-row {
+.suggestion {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -405,8 +404,7 @@ const quickLinks = computed(() => [
   .hero-card__value {
     font-size: 2rem;
   }
-  .suggestion,
-  .due-row {
+  .suggestion {
     flex-direction: column;
     align-items: flex-start;
   }

@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 
-// A shared shell for both the trainer's stall dialog and the shortcuts
-// overlay below — backdrop, ARIA wiring, and Escape-to-close live here
-// ONCE, instead of every modal needing its own copy. Concretely: this is
-// how the Phase 7 "add Escape to the stall modal" exercise gets solved
-// for every future modal at the same time, by moving the listener down
-// into the shared component instead of duplicating it per caller.
+// The native <dialog> element already solves everything this used to
+// hand-roll: showModal() gives real focus-trapping (Tab can't escape the
+// dialog — the old backdrop-div version never had this), Escape-to-close
+// is automatic, and ::backdrop replaces the manual overlay div. The one
+// bit of script left is the standard "click landed on the dialog element
+// itself, not a child" test for click-outside-to-close.
 interface Props {
   labelledBy: string
   role?: 'dialog' | 'alertdialog'
@@ -14,35 +14,27 @@ interface Props {
 withDefaults(defineProps<Props>(), { role: 'dialog' })
 
 const emit = defineEmits<{ close: [] }>()
+const dialogRef = ref<HTMLDialogElement | null>(null)
 
-function handleKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') emit('close')
-}
-
-onMounted(() => window.addEventListener('keydown', handleKeydown))
-onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
+onMounted(() => dialogRef.value?.showModal())
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
-    <div class="modal" :role="role" aria-modal="true" :aria-labelledby="labelledBy">
-      <slot />
-    </div>
-  </div>
+  <dialog
+    ref="dialogRef"
+    class="modal"
+    :role="role"
+    :aria-labelledby="labelledBy"
+    @click.self="dialogRef?.close()"
+    @close="emit('close')"
+  >
+    <slot />
+  </dialog>
 </template>
 
 <style scoped>
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--color-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-6);
-  z-index: 100;
-}
 .modal {
+  color: var(--color-text);
   background: var(--color-surface-raised);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -52,11 +44,11 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
   max-height: 80vh;
   overflow-y: auto;
 }
+.modal::backdrop {
+  background: var(--color-overlay);
+}
 
 @media (max-width: 480px) {
-  .modal-backdrop {
-    padding: var(--space-3);
-  }
   .modal {
     padding: var(--space-4);
   }

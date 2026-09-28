@@ -10,7 +10,7 @@ import Button from '../components/Button.vue'
 import Pill from '../components/Pill.vue'
 import Card from '../components/Card.vue'
 import Table from '../components/Table.vue'
-import CodeBlock from '../components/CodeBlock.vue'
+import CodeEditor from '../components/CodeEditor.vue'
 
 const { t } = useI18n()
 const store = useProgressStore()
@@ -61,7 +61,7 @@ const patternProblems = computed(() => problems.filter((p) => p.patternId === pr
 
     <Card class="section">
       <template #header>{{ t('patternDetail.templateHeader') }}</template>
-      <CodeBlock :code="pattern.template" />
+      <CodeEditor :model-value="pattern.template" :ariaLabel="t('patternDetail.templateHeader')" read-only auto-height />
       <RouterLink :to="`/train/pattern/${pattern.id}`" class="drill-link">
         <Button variant="primary">{{ t('patternDetail.drillButton') }}</Button>
       </RouterLink>

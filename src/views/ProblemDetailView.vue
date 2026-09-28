@@ -8,6 +8,7 @@ import { problemFlags } from '../lib/problemFlags'
 import { formatSeconds } from '../lib/format'
 import Button from '../components/Button.vue'
 import Card from '../components/Card.vue'
+import CodeEditor from '../components/CodeEditor.vue'
 import Pill from '../components/Pill.vue'
 import Table from '../components/Table.vue'
 
@@ -151,12 +152,12 @@ const editorialConfirmed = ref(false)
     <Card class="section">
       <template #header>{{ t('problemDetail.solutionHeader') }}</template>
       <p class="lede">{{ t('problemDetail.solutionLede') }}</p>
-      <textarea
-        v-model="draftSolution"
-        class="solution-box"
-        spellcheck="false"
-        :aria-label="t('problemDetail.solutionAriaLabel')"
+      <CodeEditor
+        :model-value="draftSolution"
+        :ariaLabel="t('problemDetail.solutionAriaLabel')"
         :placeholder="t('problemDetail.solutionPlaceholder')"
+        min-height="240px"
+        @update:model-value="(value) => (draftSolution = value)"
       />
       <Button variant="primary" :disabled="!isDirty" @click="saveSolution">{{ t('problemDetail.saveSolution') }}</Button>
     </Card>
@@ -183,6 +184,7 @@ const editorialConfirmed = ref(false)
             <th>{{ t('problemDetail.colResult') }}</th>
             <th>{{ t('problemDetail.colTime') }}</th>
             <th>{{ t('problemDetail.colPeeked') }}</th>
+            <th>{{ t('problemDetail.colMethod') }}</th>
             <th>{{ t('problemDetail.colStuckLine') }}</th>
           </tr>
         </thead>
@@ -197,6 +199,7 @@ const editorialConfirmed = ref(false)
             </td>
             <td>{{ formatSeconds(rep.seconds) }}</td>
             <td>{{ rep.usedReference ? t('common.yes') : t('common.no') }}</td>
+            <td class="method-cell">{{ rep.methodSignature ?? t('common.unknownDash') }}</td>
             <td class="stuck-line-cell">{{ rep.stuckLine ?? t('common.unknownDash') }}</td>
           </tr>
         </tbody>
@@ -306,7 +309,6 @@ const editorialConfirmed = ref(false)
   margin: 0 0 var(--space-3);
 }
 
-.solution-box,
 .notes-box {
   width: 100%;
   padding: var(--space-4);
@@ -316,19 +318,12 @@ const editorialConfirmed = ref(false)
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-md);
   resize: vertical;
-}
-.solution-box {
-  min-height: 240px;
-  font-family: var(--font-mono);
-  font-size: var(--text-code);
-  line-height: var(--leading-code);
-}
-.notes-box {
   min-height: 100px;
   font-family: var(--font-sans);
   font-size: var(--text-sm);
 }
 
+.method-cell,
 .stuck-line-cell {
   white-space: normal !important; /* same Table-vs-consumer specificity note as elsewhere */
   font-family: var(--font-mono);

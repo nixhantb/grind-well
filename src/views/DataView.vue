@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { Database } from '@lucide/vue'
 import { useAppStore } from '../stores/app'
 import { useProgressStore } from '../stores/progress'
-import { buildExportBundle, isExportBundle, exportFileName } from '../lib/exportImport'
+import { buildExportBundle, exportBundleSchema, exportFileName } from '../lib/exportImport'
 import { stuckLineFrequency } from '../lib/stuckLines'
 import { formatSeconds } from '../lib/format'
 import { problems } from '../content'
@@ -20,6 +20,12 @@ const progressStore = useProgressStore()
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const message = ref<{ kind: 'success' | 'error'; text: string } | null>(null)
+
+// A real backup is plain JSON, a few reps of history per problem — well
+// under a megabyte even with heavy use. This isn't a realistic size for
+// anyone's actual data; it's a cap against an oversized file (crafted or
+// just wrong) hanging the tab in JSON.parse.
+const MAX_IMPORT_BYTES = 5 * 1024 * 1024
 
 const problemCount = computed(() => Object.keys(progressStore.problemStates).length)
 
@@ -69,20 +75,28 @@ async function handleFileSelected(event: Event) {
 
   if (!file) return
 
+  if (file.size > MAX_IMPORT_BYTES) {
+    message.value = { kind: 'error', text: t('data.fileTooLargeError') }
+    return
+  }
+
   try {
     const text = await file.text()
-    const parsed = JSON.parse(text)
+    // Validate AND use the schema's own parsed output, not the raw JSON —
+    // an unexpected key (e.g. a planted `__proto__`) is stripped by the
+    // schema rather than surviving into `replaceAll`'s Object.assign.
+    const result = exportBundleSchema.safeParse(JSON.parse(text))
 
-    if (!isExportBundle(parsed)) {
+    if (!result.success) {
       message.value = { kind: 'error', text: t('data.notBackupError', { brand: t('nav.brand') }) }
       return
     }
 
-    progressStore.replaceAll(parsed.problemStates)
-    appStore.theme = parsed.theme
+    progressStore.replaceAll(result.data.problemStates)
+    appStore.theme = result.data.theme
     message.value = {
       kind: 'success',
-      text: t('data.importedMessage', { date: new Date(parsed.exportedAt).toLocaleString() }),
+      text: t('data.importedMessage', { date: new Date(result.data.exportedAt).toLocaleString() }),
     }
   } catch {
     message.value = { kind: 'error', text: t('data.invalidJsonError') }
@@ -149,6 +163,7 @@ function handleReset() {
           <th>{{ t('data.colResult') }}</th>
           <th>{{ t('data.colTime') }}</th>
           <th>{{ t('data.colPeeked') }}</th>
+          <th>{{ t('data.colMethod') }}</th>
           <th>{{ t('data.colStuckLine') }}</th>
         </tr>
       </thead>
@@ -166,6 +181,7 @@ function handleReset() {
           </td>
           <td>{{ formatSeconds(rep.seconds) }}</td>
           <td>{{ rep.usedReference ? t('common.yes') : t('common.no') }}</td>
+          <td class="method-cell">{{ rep.methodSignature ?? t('common.unknownDash') }}</td>
           <td class="stuck-line-cell">{{ rep.stuckLine ?? t('common.unknownDash') }}</td>
         </tr>
       </tbody>
@@ -219,6 +235,7 @@ function handleReset() {
   white-space: normal !important; /* same Table-vs-consumer specificity note as elsewhere */
   min-width: 220px;
 }
+.method-cell,
 .stuck-line-cell {
   white-space: normal !important;
   font-family: var(--font-mono);

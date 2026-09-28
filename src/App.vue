@@ -20,7 +20,6 @@ import {
   ListChecks,
   BookOpen,
   Database,
-  Palette,
   Keyboard,
   Sun,
   Moon,
@@ -41,11 +40,6 @@ const { showHelp } = useGlobalShortcuts()
 const shortcuts = useShortcuts()
 const route = useRoute()
 
-// The marketing landing page ('/') sets `meta.standalone` so it renders
-// full-bleed with none of the app shell's sidebar/nav around it — it's a
-// pitch page a stranger lands on, not a screen inside the tool.
-const isStandalone = computed(() => route.meta.standalone === true)
-
 // ---------- mobile nav drawer ----------
 // Below 768px the sidebar becomes an off-canvas drawer (CSS handles the
 // slide via a class, not inline styles) instead of the permanent 224px
@@ -65,7 +59,9 @@ watch(
 // this is the visible part, shown regardless of which screen a corrupted
 // read happened to be noticed on. The store only carries a {reason, key}
 // code (it has no i18n access); this is where that becomes real text.
-const storageWarningCode = computed(() => store.storageWarning ?? progressStore.storageWarning)
+// (Only the progress store still hand-validates like this — the theme
+// store now leaves its own storage handling to useColorMode.)
+const storageWarningCode = computed(() => progressStore.storageWarning)
 const storageWarning = computed(() => {
   const code = storageWarningCode.value
   if (!code) return null
@@ -75,25 +71,20 @@ const storageWarning = computed(() => {
 // `badge` is a count only the Rep Queue link carries — everything else is
 // `undefined`, and Badge.vue itself renders nothing at 0/undefined anyway.
 const navLinks = computed(() => [
-  { to: '/app', label: t('nav.dashboard'), icon: LayoutDashboard },
+  { to: '/', label: t('nav.dashboard'), icon: LayoutDashboard },
   { to: '/patterns', label: t('nav.patterns'), icon: LayoutGrid },
   { to: '/queue', label: t('nav.repQueue'), icon: ListChecks, badge: progressStore.dueQueue.length },
   { to: '/protocols', label: t('nav.protocols'), icon: BookOpen },
   { to: '/data', label: t('nav.data'), icon: Database },
-  { to: '/style-guide', label: t('nav.styleGuide'), icon: Palette },
 ])
 </script>
 
 <template>
-  <!-- Standalone routes (the marketing homepage) render with none of the
-       shell chrome below — no sidebar, no nav, just the page itself. -->
-  <RouterView v-if="isStandalone" />
-
-  <!-- :data-theme is a reactive attribute binding: the moment
-       store.theme changes, Vue updates this attribute, and tokens.css's
-       [data-theme="light"] selector immediately overrides every color
-       variable beneath it — no manual DOM code, no watcher needed. -->
-  <div v-else class="shell" :data-theme="store.theme">
+  <!-- No :data-theme binding here — useColorMode (stores/app.ts) applies
+       that attribute to <html> directly, and tokens.css's
+       [data-theme="light"] selector is unscoped, so it still cascades
+       down through everything below. -->
+  <div class="shell">
     <!-- Only visible under the mobile breakpoint (CSS-hidden otherwise) —
          the permanent sidebar has its own brand mark, so this bar would be
          pure duplication on desktop/tablet. -->
