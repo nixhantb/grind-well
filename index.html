@@ -19,7 +19,13 @@
     <title>GrindWell</title>
   </head>
   <body>
-    <div id="app"></div>
+    <!-- Vue replaces this once main.ts's initial IndexedDB read resolves
+         (usually a few ms) — a plain, un-styled placeholder so a slow read
+         shows something instead of a blank white flash, not a real
+         loading UI. -->
+    <div id="app" style="display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #0b0b10; color: #6b6b7d; font: 14px system-ui, sans-serif;">
+      Loading…
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

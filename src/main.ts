@@ -10,11 +10,18 @@ import './style.css'
 import App from './App.vue'
 import { router } from './router'
 import { i18n } from './i18n'
+import { useProgressStore } from './stores/progress'
 
 const app = createApp(App)
+const pinia = createPinia()
 
-app.use(createPinia())
+app.use(pinia)
 app.use(router)
 app.use(i18n)
 
-app.mount('#app')
+// Rep history lives in IndexedDB (async) rather than localStorage — wait
+// for the one-time load/migration to finish before the first paint, so
+// the Dashboard/Queue never flash an empty "nothing due" state. Passing
+// `pinia` explicitly is what lets the store be used here, outside any
+// component's setup().
+useProgressStore(pinia).ready.then(() => app.mount('#app'))

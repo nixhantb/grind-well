@@ -7,6 +7,7 @@
 //
 // Framework-free: no Vue import here. Pinia stores call into this; this
 // file has no idea Pinia or Vue exist.
+import { get as idbGet, set as idbSet } from 'idb-keyval'
 
 export interface KeyValueStore {
   getItem(key: string): string | null
@@ -90,6 +91,64 @@ export function writeToStorage(key: string, value: unknown, store: KeyValueStore
     store.setItem(key, JSON.stringify(value))
   } catch (err) {
     console.error(`Failed to save "${key}" to storage`, err)
+  }
+}
+
+/** The async counterpart of KeyValueStore — same DI shape (a real backend,
+ *  or a plain in-memory fake in tests), just Promise-returning since
+ *  IndexedDB (unlike localStorage) is inherently asynchronous. */
+export interface AsyncKeyValueStore {
+  getItem(key: string): Promise<unknown>
+  setItem(key: string, value: unknown): Promise<void>
+}
+
+function defaultIDBStore(): AsyncKeyValueStore {
+  return {
+    getItem: (key) => idbGet(key),
+    setItem: (key, value) => idbSet(key, value),
+  }
+}
+
+/**
+ * The IndexedDB counterpart of `readFromStorage` — same validate-then-warn
+ * contract, but for the store with real headroom (localStorage tops out
+ * around 5-10MB and blocks the main thread on every read/write; IndexedDB
+ * is orders of magnitude larger and fully async). idb-keyval stores
+ * structured-cloneable values directly, so there's no JSON parse step —
+ * "corrupted" here means the read itself failed, not bad JSON text.
+ */
+export async function readFromIndexedDB<T>(
+  key: string,
+  schema: Schema<T>,
+  fallback: T,
+  store: AsyncKeyValueStore = defaultIDBStore(),
+): Promise<ReadResult<T>> {
+  let raw: unknown
+  try {
+    raw = await store.getItem(key)
+  } catch {
+    return { value: fallback, warning: { reason: 'corrupted', key } }
+  }
+  if (raw === undefined) return { value: fallback, warning: null }
+
+  const result = schema.safeParse(raw)
+  if (!result.success) {
+    return { value: fallback, warning: { reason: 'invalid-shape', key } }
+  }
+  return { value: result.data, warning: null }
+}
+
+/** Never throws — same "a failed save degrades quietly" contract as
+ *  writeToStorage. */
+export async function writeToIndexedDB(
+  key: string,
+  value: unknown,
+  store: AsyncKeyValueStore = defaultIDBStore(),
+): Promise<void> {
+  try {
+    await store.setItem(key, value)
+  } catch (err) {
+    console.error(`Failed to save "${key}" to IndexedDB`, err)
   }
 }
 

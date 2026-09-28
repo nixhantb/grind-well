@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { z } from 'zod'
-import { readFromStorage, writeToStorage, debounce, type KeyValueStore } from './storage'
+import {
+  readFromStorage,
+  writeToStorage,
+  readFromIndexedDB,
+  writeToIndexedDB,
+  debounce,
+  type KeyValueStore,
+  type AsyncKeyValueStore,
+} from './storage'
 
 // A minimal in-memory stand-in for window.localStorage — this is the
 // whole point of KeyValueStore being an interface: no jsdom, no real
@@ -10,6 +18,18 @@ function fakeStore(initial: Record<string, string> = {}): KeyValueStore {
   return {
     getItem: (key) => data.get(key) ?? null,
     setItem: (key, value) => {
+      data.set(key, value)
+    },
+  }
+}
+
+// Same idea for the async (IndexedDB) side — idb-keyval stores real
+// values, not JSON text, so the fake does too.
+function fakeAsyncStore(initial: Record<string, unknown> = {}): AsyncKeyValueStore {
+  const data = new Map(Object.entries(initial))
+  return {
+    getItem: async (key) => data.get(key),
+    setItem: async (key, value) => {
       data.set(key, value)
     },
   }
@@ -84,6 +104,64 @@ describe('writeToStorage', () => {
 
   it('is a no-op with no store at all', () => {
     expect(() => writeToStorage('widget', { name: 'x', count: 1 }, null)).not.toThrow()
+  })
+})
+
+describe('readFromIndexedDB', () => {
+  it('returns the fallback with no warning when the key is missing', async () => {
+    const store = fakeAsyncStore()
+    const result = await readFromIndexedDB('widget', widgetSchema, { name: 'default', count: 0 }, store)
+    expect(result).toEqual({ value: { name: 'default', count: 0 }, warning: null })
+  })
+
+  it('returns the value as-is when it matches the shape (no JSON parsing involved)', async () => {
+    const store = fakeAsyncStore({ widget: { name: 'saved', count: 3 } })
+    const result = await readFromIndexedDB('widget', widgetSchema, { name: 'default', count: 0 }, store)
+    expect(result).toEqual({ value: { name: 'saved', count: 3 }, warning: null })
+  })
+
+  it('falls back and warns when the stored value fails the schema', async () => {
+    const store = fakeAsyncStore({ widget: { name: 'saved' } }) // missing `count`
+    const result = await readFromIndexedDB('widget', widgetSchema, { name: 'default', count: 0 }, store)
+    expect(result.value).toEqual({ name: 'default', count: 0 })
+    expect(result.warning).toEqual({ reason: 'invalid-shape', key: 'widget' })
+  })
+
+  it('falls back and warns when the read itself throws', async () => {
+    const angryStore: AsyncKeyValueStore = {
+      getItem: async () => {
+        throw new Error('IDB connection failed')
+      },
+      setItem: async () => {},
+    }
+    const result = await readFromIndexedDB('widget', widgetSchema, { name: 'default', count: 0 }, angryStore)
+    expect(result).toEqual({ value: { name: 'default', count: 0 }, warning: { reason: 'corrupted', key: 'widget' } })
+  })
+
+  it('strips keys the schema does not declare, even a planted __proto__', async () => {
+    const store = fakeAsyncStore({ widget: { name: 'saved', count: 3, __proto__: { polluted: true }, extra: 'nope' } })
+    const result = await readFromIndexedDB('widget', widgetSchema, { name: 'default', count: 0 }, store)
+    expect(result.value).toEqual({ name: 'saved', count: 3 })
+    expect(Object.keys(result.value)).toEqual(['name', 'count'])
+  })
+})
+
+describe('writeToIndexedDB', () => {
+  it('round-trips a value through the same store', async () => {
+    const store = fakeAsyncStore()
+    await writeToIndexedDB('widget', { name: 'saved', count: 3 }, store)
+    const result = await readFromIndexedDB('widget', widgetSchema, { name: 'default', count: 0 }, store)
+    expect(result).toEqual({ value: { name: 'saved', count: 3 }, warning: null })
+  })
+
+  it('does not throw when the store itself throws (e.g. quota exceeded)', async () => {
+    const angryStore: AsyncKeyValueStore = {
+      getItem: async () => undefined,
+      setItem: async () => {
+        throw new Error('QuotaExceededError')
+      },
+    }
+    await expect(writeToIndexedDB('widget', { name: 'x', count: 1 }, angryStore)).resolves.not.toThrow()
   })
 })
 

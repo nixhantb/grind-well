@@ -5,7 +5,8 @@
 // components never call the scheduler directly, they call store actions.
 import { defineStore } from 'pinia'
 import { computed, reactive, ref, watch } from 'vue'
-import { readFromStorage, writeToStorage, debounce, type StorageWarning } from '../lib/storage'
+import { z } from 'zod'
+import { readFromStorage, readFromIndexedDB, writeToIndexedDB, debounce, type StorageWarning } from '../lib/storage'
 import { computeNextDueDate, isGraduated, buildRepQueue, coldReproductionRate } from '../lib/scheduler'
 import { todayISO } from '../lib/date'
 import { problems } from '../content'
@@ -19,20 +20,52 @@ import {
   type RepLog,
 } from './progressTypes'
 
+// Rep history is the one thing in this app with real room to grow — years
+// of history across 149 problems — so it lives in IndexedDB (much larger
+// quota than localStorage, and fully async: never blocks the UI thread on
+// read/write) rather than alongside the small single-value stores
+// (theme, username), which have no reason to move off localStorage.
 const STORAGE_KEY = 'fluency:progress:v1'
+const MIGRATED_FLAG_KEY = 'fluency:progress:migratedFromLocalStorage:v1'
 
 export const useProgressStore = defineStore('progress', () => {
-  const { value: initial, warning } = readFromStorage(STORAGE_KEY, problemStatesMapSchema, {})
+  const problemStates = reactive<ProblemStatesMap>({})
+  const storageWarning = ref<StorageWarning | null>(null)
+  const isLoaded = ref(false)
 
-  const problemStates = reactive<ProblemStatesMap>(initial)
+  const saveProgress = debounce(() => writeToIndexedDB(STORAGE_KEY, { ...problemStates }), 500)
 
-  const storageWarning = ref<StorageWarning | null>(warning)
+  // One-time migration so upgrading from the old localStorage-backed
+  // version doesn't wipe anyone's history: if IndexedDB has never been
+  // touched before, copy over whatever's in the old localStorage key
+  // first. The flag (not just "IndexedDB is empty") is what makes this
+  // run exactly once — otherwise a legitimate Reset later would look
+  // identical to "never migrated" and silently resurrect the old backup.
+  const ready = (async () => {
+    const idbResult = await readFromIndexedDB(STORAGE_KEY, problemStatesMapSchema, {})
+    let { value, warning } = idbResult
 
-  const saveProgress = debounce(() => writeToStorage(STORAGE_KEY, { ...problemStates }), 500)
-  // Watching a `reactive` object directly is implicitly deep — unlike a
-  // `ref`, where you'd need `{ deep: true }` to notice a nested mutation.
-  // This fires on every add/update/delete anywhere in the map.
-  watch(problemStates, () => saveProgress())
+    const alreadyMigrated = (await readFromIndexedDB(MIGRATED_FLAG_KEY, z.boolean(), false)).value
+    if (!alreadyMigrated) {
+      const legacy = readFromStorage(STORAGE_KEY, problemStatesMapSchema, {})
+      if (Object.keys(legacy.value).length > 0 && Object.keys(value).length === 0 && warning === null) {
+        value = legacy.value
+        warning = legacy.warning
+        await writeToIndexedDB(STORAGE_KEY, value)
+      }
+      await writeToIndexedDB(MIGRATED_FLAG_KEY, true)
+    }
+
+    Object.assign(problemStates, value)
+    storageWarning.value = warning
+    isLoaded.value = true
+
+    // Watching a `reactive` object directly is implicitly deep — unlike a
+    // `ref`, where you'd need `{ deep: true }` to notice a nested mutation.
+    // Only starts once loaded, so the initial Object.assign above never
+    // triggers a write of data right back at itself.
+    watch(problemStates, () => saveProgress())
+  })()
 
   /** Read-only lookup. Never mutate the object this returns — it may be
    *  a throwaway default, not the stored entry; go through the actions
@@ -128,6 +161,8 @@ export const useProgressStore = defineStore('progress', () => {
   }
 
   return {
+    ready,
+    isLoaded,
     problemStates,
     storageWarning,
     dueQueue,
