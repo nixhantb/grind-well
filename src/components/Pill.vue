@@ -2,12 +2,6 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-// VUE CONCEPT: `computed`.
-// Closest C# analogy: a get-only property that caches its result and
-// recomputes only when something it reads changes — like a property
-// backed by a private field that's invalidated on dependency change,
-// except Vue tracks the dependency (here, `props.tone`) for you instead
-// of you writing the invalidation logic by hand.
 interface Props {
   tone?: 'neutral' | 'accent' | 'easy' | 'medium' | 'hard'
 }

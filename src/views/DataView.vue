@@ -4,9 +4,12 @@ import { useI18n } from 'vue-i18n'
 import { Database } from '@lucide/vue'
 import { useAppStore } from '../stores/app'
 import { useProgressStore } from '../stores/progress'
+import { useUserStore } from '../stores/user'
+import { useBackupStore } from '../stores/backup'
 import { buildExportBundle, exportBundleSchema, exportFileName } from '../lib/exportImport'
 import { stuckLineFrequency } from '../lib/stuckLines'
 import { formatSeconds } from '../lib/format'
+import { daysSinceExport } from '../lib/backupNudge'
 import { problems } from '../content'
 import Button from '../components/Button.vue'
 import Card from '../components/Card.vue'
@@ -17,6 +20,8 @@ import PageHeader from '../components/PageHeader.vue'
 const { t } = useI18n()
 const appStore = useAppStore()
 const progressStore = useProgressStore()
+const userStore = useUserStore()
+const backupStore = useBackupStore()
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const message = ref<{ kind: 'success' | 'error'; text: string } | null>(null)
@@ -45,8 +50,17 @@ const allRepsWithContext = computed(() => {
 
 const stuckLines = computed(() => stuckLineFrequency(progressStore.allReps))
 
+// ---------- last-export status line ----------
+const lastExportedText = computed(() => {
+  const lastExportedAt = backupStore.lastExportedAt
+  if (lastExportedAt === null) return t('data.neverExported')
+  const days = daysSinceExport(lastExportedAt, new Date().toISOString())
+  if (days <= 0) return t('data.lastExportedToday')
+  return t('data.lastExportedDaysAgo', days)
+})
+
 function handleExport() {
-  const bundle = buildExportBundle(appStore.theme, progressStore.problemStates)
+  const bundle = buildExportBundle(appStore.theme, userStore.username, progressStore.problemStates)
   const json = JSON.stringify(bundle, null, 2)
 
   // Vanilla browser file-download recipe: wrap the string in a Blob, give
@@ -60,6 +74,7 @@ function handleExport() {
   link.download = exportFileName()
   link.click()
   URL.revokeObjectURL(url)
+  backupStore.recordExport()
 
   message.value = { kind: 'success', text: t('data.exportedMessage', { filename: exportFileName() }) }
 }
@@ -94,6 +109,10 @@ async function handleFileSelected(event: Event) {
 
     progressStore.replaceAll(result.data.problemStates)
     appStore.theme = result.data.theme
+    // Older backups have no `username` field — the schema already filled
+    // in the default placeholder, so this both restores a real saved name
+    // and auto-updates a stale/missing one to something sensible either way.
+    userStore.username = result.data.username
     message.value = {
       kind: 'success',
       text: t('data.importedMessage', { date: new Date(result.data.exportedAt).toLocaleString() }),
@@ -118,6 +137,7 @@ function handleReset() {
 
   <Card class="section">
     <template #header>{{ t('data.backupHeader') }}</template>
+    <p class="last-exported">{{ lastExportedText }}</p>
     <div class="row">
       <Button variant="primary" @click="handleExport">{{ t('data.exportButton') }}</Button>
       <Button variant="secondary" @click="triggerImport">{{ t('data.importButton') }}</Button>
@@ -196,6 +216,11 @@ function handleReset() {
 }
 .section {
   margin-bottom: var(--space-6);
+}
+.last-exported {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
 }
 .row {
   display: flex;

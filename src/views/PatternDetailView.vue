@@ -28,21 +28,14 @@ const STATUS_TONE: Record<ProblemStatus, 'neutral' | 'accent' | 'easy'> = {
   graduated: 'easy',
 }
 
-// This route is registered with `props: true` (router/index.ts), so `id`
-// arrives as a normal prop — not read via `useRoute().params.id`. That
-// matters for what happens when you navigate from /patterns/3 straight to
-// /patterns/4: Vue Router reuses this same component instance (both URLs
-// match the same route record), and because `id` is a prop, it updates
-// reactively just like any other prop change would — no extra code, and
-// no `watch` needed to notice the param changed.
+// Registered with `props: true` (router/index.ts), so navigating from
+// /patterns/3 straight to /patterns/4 reuses this component instance and
+// `id` updates reactively — no `watch` needed to notice the param changed.
 interface Props {
   id: string
 }
 const props = defineProps<Props>()
 
-// `computed` re-runs only when `props.id` changes, and caches the result
-// between renders otherwise — the same reasoning as PatternsView's
-// problemCounts, just keyed on a prop instead of static data.
 const pattern = computed(() => patterns.find((p) => p.id === props.id))
 const patternProblems = computed(() => problems.filter((p) => p.patternId === props.id))
 </script>

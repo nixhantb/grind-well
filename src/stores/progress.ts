@@ -24,16 +24,6 @@ const STORAGE_KEY = 'fluency:progress:v1'
 export const useProgressStore = defineStore('progress', () => {
   const { value: initial, warning } = readFromStorage(STORAGE_KEY, problemStatesMapSchema, {})
 
-  // VUE CONCEPT: `reactive` vs `ref`.
-  // `ref` boxes any single value behind `.value`; `reactive` instead
-  // wraps an object/array in a Proxy and makes EVERY property on it
-  // (including ones added later, like `problemStates[42] = ...` for a
-  // problem id that had no entry yet) reactive, with no `.value` needed.
-  // There's no real C# equivalent — the closest gesture is something like
-  // wrapping a Dictionary so every read/write is instrumented, but Proxy
-  // traps go further than that. Rule of thumb: `ref` for primitives and
-  // "the whole thing gets replaced", `reactive` for an object you mutate
-  // in place — which is exactly what a growing problem-id -> state map is.
   const problemStates = reactive<ProblemStatesMap>(initial)
 
   const storageWarning = ref<StorageWarning | null>(warning)
@@ -46,17 +36,14 @@ export const useProgressStore = defineStore('progress', () => {
 
   /** Read-only lookup. Never mutate the object this returns — it may be
    *  a throwaway default, not the stored entry; go through the actions
-   *  below instead, the same way you wouldn't mutate a DTO and expect
-   *  EF Core to notice. */
+   *  below instead. */
   function getState(problemId: number): ProblemState {
     return problemStates[problemId] ?? defaultProblemState(problemId)
   }
 
   // ---------- derived state ----------
-  // VUE CONCEPT: a `computed` getter living in a store, not a component.
   // Every screen that needs "what's due right now" reads the SAME cached
-  // computation instead of each re-deriving it from problemStates its own
-  // way — the Dashboard's due-count and the Queue's full list are
+  // computation — the Dashboard's due-count and the Queue's full list are
   // guaranteed to agree because they're literally the same array.
 
   interface QueueRow {

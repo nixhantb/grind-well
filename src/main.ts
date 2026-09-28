@@ -13,8 +13,8 @@ import { i18n } from './i18n'
 
 const app = createApp(App)
 
-app.use(createPinia()) // registers Pinia so every component can call useXStore()
-app.use(router)        // registers the router so <RouterView> / <RouterLink> work
-app.use(i18n)          // registers vue-i18n so every component can call useI18n()
+app.use(createPinia())
+app.use(router)
+app.use(i18n)
 
 app.mount('#app')

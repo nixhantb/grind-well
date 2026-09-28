@@ -11,22 +11,10 @@ const highlighted = computed(() => highlightCSharp(props.code))
 </script>
 
 
-<!--
-  VUE CONCEPT: v-html.
-  Vue normally escapes everything you interpolate with {{ }} — that's why
-  {{ userInput }} can never inject a <script> tag. v-html is the explicit
-  opt-out: it sets innerHTML directly, so anything in that string becomes
-  real markup. That's dangerous with content from another user or the
-  network (classic stored-XSS vector) — the rule is: v-html ONLY what you
-  would trust to hand-write into the page yourself.
-
-  Here `highlighted` is Prism's output over `code`, which always comes
-  from content.generated.ts (our own parsed markdown) or a solution the
-  USER pasted into their own browser — never another user's data, never a
-  network response. Prism also HTML-escapes the underlying source before
-  wrapping pieces of it in <span>, so even a stray `<` inside a C# string
-  literal renders as text, not markup.
--->
+<!-- v-html is safe here: Prism HTML-escapes the source before wrapping
+     pieces of it in <span>, so even a stray `<` in a C# string literal
+     renders as text, not markup — regardless of whether `code` is our own
+     content or something the user pasted. -->
 <template>
   <pre class="code-block"><code
     class="language-csharp"

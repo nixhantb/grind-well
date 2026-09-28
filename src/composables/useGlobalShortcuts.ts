@@ -1,19 +1,7 @@
-// VUE CONCEPT: a composable.
-// A plain function, named `useXxx` by convention, that bundles reactive
-// state + lifecycle hooks into one reusable unit — call it from any
-// component's <script setup> and get back live refs, same as calling
-// `useAppStore()` does. The difference from a store: a composable's state
-// is NOT shared between callers (each call makes its own fresh refs and
-// listener), whereas a Pinia store is a genuine singleton. Closest C#
-// analogy: a small scoped-lifetime helper class you `new` up per use,
-// versus a store's registered singleton service.
-//
-// This one owns exactly one global `keydown` listener for the whole app,
-// attached once here rather than once per screen — "global event
-// listeners done correctly" means skipping it while the user is typing
-// anywhere; VueUse's `useEventListener` handles the add/remove-on-unmount
-// half so navigating away (or, in tests, unmounting) can't leave a
-// dangling listener.
+// One global `keydown` listener for the whole app, attached once here
+// rather than once per screen. VueUse's `useEventListener` handles
+// add/remove-on-unmount, so navigating away can't leave a dangling
+// listener.
 import { ref, computed } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { useRouter } from 'vue-router'

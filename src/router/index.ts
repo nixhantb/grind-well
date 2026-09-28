@@ -1,14 +1,10 @@
-// VUE CONCEPT: the router.
-// In ASP.NET terms this is closest to your route table / endpoint mapping —
-// it's the thing that looks at the URL and decides which "page" component to render.
-// createWebHistory() means we use normal URLs (/patterns/3) instead of
-// hash URLs (/#/patterns/3); it needs a tiny server rewrite rule in production,
-// which Vite's dev server and most static hosts already do for you.
+// createWebHistory() means real URLs (/patterns/3) instead of hash URLs
+// (/#/patterns/3) — the host needs a rewrite rule serving index.html for
+// any path (see vercel.json).
 import { createRouter, createWebHistory } from 'vue-router'
 
-// Route components are loaded lazily (the `() => import(...)` form) so each
-// screen becomes its own JS chunk, fetched only when the user navigates there.
-// This is the Vue-Router equivalent of lazy-loading an assembly on first use.
+// Lazy-loaded (`() => import(...)`) so each screen is its own JS chunk,
+// fetched only when the user navigates there.
 const routes = [
   { path: '/', name: 'dashboard', component: () => import('../views/DashboardView.vue') },
   { path: '/patterns', name: 'patterns', component: () => import('../views/PatternsView.vue') },

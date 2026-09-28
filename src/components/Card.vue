@@ -1,19 +1,11 @@
 <script setup lang="ts">
-// No props — Card is pure visual chrome, so there's nothing to declare.
-// `$slots` is a template-only special value (not something you import):
-// checking `$slots.header` lets the wrapper <header> only render when the
-// parent actually filled that named slot, instead of always rendering an
-// empty, weirdly-padded header.
+// No props — Card is pure visual chrome.
 </script>
 
 <template>
   <section class="card">
-    <!-- VUE CONCEPT: named slots.
-         A default <slot /> is the "one hole" version; naming a slot
-         ("header") gives the parent multiple distinct holes to fill,
-         each addressed by name: <Card><template #header>...</template>
-         ...body...</Card>. Closest C# analogy: a control with more than
-         one ContentPresenter, each with its own name. -->
+    <!-- Only render the header wrapper when the parent filled that slot,
+         instead of an empty, weirdly-padded header. -->
     <header v-if="$slots.header" class="card__header">
       <slot name="header" />
     </header>

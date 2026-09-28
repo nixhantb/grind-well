@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   LayoutDashboard,
@@ -9,29 +9,57 @@ import {
   Target,
   Sparkles,
   TrendingUp,
+  Flame,
   LayoutGrid,
   BookOpen,
   Database,
   ChevronRight,
+  Pencil,
 } from '@lucide/vue'
+// GitHub/LeetCode-style activity calendar — a battle-tested SVG component
+// rather than a hand-rolled grid, so date-bucketing, month/day labels, and
+// tooltips aren't reinvented here.
+import { CalendarHeatmap } from 'vue3-calendar-heatmap'
+import 'vue3-calendar-heatmap/dist/style.css'
+import 'tippy.js/dist/tippy.css'
 import { useProgressStore } from '../stores/progress'
-import { patterns, problems } from '../content'
+import { useAppStore } from '../stores/app'
+import { useUserStore } from '../stores/user'
+import { patterns, problems, type Problem } from '../content'
 import { suggestNextProblem } from '../lib/suggestNextProblem'
-import { weeklyColdReproductionRates } from '../lib/scheduler'
+import { weeklyColdReproductionRates, computeStreaks } from '../lib/scheduler'
+import { todayISO, parseLocalDateISO } from '../lib/date'
 import Button from '../components/Button.vue'
 import Card from '../components/Card.vue'
+import CodeEditor from '../components/CodeEditor.vue'
+import Modal from '../components/Modal.vue'
 import Pill from '../components/Pill.vue'
 import PageHeader from '../components/PageHeader.vue'
 import StatCard from '../components/StatCard.vue'
 
 const { t } = useI18n()
 const store = useProgressStore()
+const appStore = useAppStore()
+const userStore = useUserStore()
 
-// "What do I do right now" is three questions, answered top to bottom:
-// what's due, what's new, and am I actually getting better. Total solved
-// is deliberately NOT one of the top questions: it's the vanity metric
-// that measures activity, not retention, so it only appears small and
-// muted near the bottom.
+// ---------- username: input while editing, avatar + name once set ----------
+// Starts in edit mode only if there's nothing saved yet; Enter commits and
+// switches to the read-only avatar view, the pencil button switches back.
+const isEditingUsername = ref(userStore.username.trim() === '')
+const usernameInputRef = ref<HTMLInputElement | null>(null)
+
+function commitUsername() {
+  if (userStore.username.trim() === '') return
+  isEditingUsername.value = false
+}
+function editUsername() {
+  isEditingUsername.value = true
+  nextTick(() => usernameInputRef.value?.focus())
+}
+
+// Total solved is deliberately de-emphasized: it's the vanity metric that
+// measures activity, not retention, so it only appears small and muted
+// near the bottom.
 
 // ---------- 1. reps due today, split overdue vs due-today ----------
 const dueCount = computed(() => store.dueQueue.length)
@@ -52,15 +80,26 @@ const touchedIds = computed(() => {
 })
 const suggestedProblem = computed(() => suggestNextProblem(problems, touchedIds.value))
 
-// A stand-in for the real "paste your accepted solution" flow, which
-// doesn't exist yet. `window.prompt` is a deliberately crude, zero-new-UI
-// way to collect the text — saving an EMPTY solution here would leave a
-// dead end at the trainer, which needs real code to drill against.
-function markSuggestedSolved() {
+// ---------- solve modal: the same paste-a-solution flow Problem Detail
+// uses (CodeEditor, store.saveSolution), just reachable without leaving
+// the dashboard. Target is captured into its own ref rather than read
+// live off `suggestedProblem` — the modal must keep showing the problem
+// it was opened for even if the suggestion itself changes underneath it.
+const solveModalTarget = ref<Problem | null>(null)
+const solveDraftCode = ref('')
+
+function openSolveModal() {
   if (!suggestedProblem.value) return
-  const code = window.prompt(t('dashboard.promptTitle'), t('dashboard.promptPlaceholder'))
-  if (code === null || code.trim() === '') return
-  store.saveSolution(suggestedProblem.value.id, code)
+  solveModalTarget.value = suggestedProblem.value
+  solveDraftCode.value = ''
+}
+function closeSolveModal() {
+  solveModalTarget.value = null
+}
+function confirmSolveSuggested() {
+  if (!solveModalTarget.value || solveDraftCode.value.trim() === '') return
+  store.saveSolution(solveModalTarget.value.id, solveDraftCode.value)
+  solveModalTarget.value = null
 }
 
 // ---------- 3. cold reproduction rate — the hero stat ----------
@@ -87,6 +126,42 @@ const sparklinePoints = computed(() => {
     .join(' ')
 })
 
+// ---------- activity heatmap — one square per day, rep count as the
+// intensity, same idea as GitHub's/LeetCode's contribution calendar ----------
+const heatmapValues = computed(() => {
+  const byDate = new Map<string, number>()
+  for (const rep of store.allReps) {
+    byDate.set(rep.date, (byDate.get(rep.date) ?? 0) + 1)
+  }
+  // `date` MUST be a real Date built via parseLocalDateISO, not the raw
+  // 'YYYY-MM-DD' string — the library buckets days using local getters, and
+  // handing it a date-only string instead lets JS parse it as UTC midnight,
+  // which reads back as the PREVIOUS local day for every timezone behind
+  // UTC. Same rule applies whether `rep.date` came from a live rep today
+  // or from years of history restored via Data > Import.
+  return Array.from(byDate, ([date, count]) => ({ date: parseLocalDateISO(date), count }))
+})
+// The library's `values` array being empty renders fine, but its `endDate`
+// still needs a real date to anchor the (empty) year of squares to. Same
+// local-vs-UTC parsing caveat as above applies here too.
+const heatmapEndDate = computed(() => parseLocalDateISO(todayISO()))
+
+// The heatmap's companion stat — same "days with activity" data, just
+// asking "how many IN A ROW" instead of "how many total." Built from the
+// same allReps source, so it can never disagree with the calendar above it.
+const streaks = computed(() => computeStreaks(store.allReps.map((rep) => rep.date), todayISO()))
+
+// Matches the app's own color tokens via color-mix() instead of a second,
+// hardcoded palette — the heatmap re-themes for free when dark/light toggles.
+const heatmapRangeColor = [
+  'var(--color-surface)',
+  'color-mix(in srgb, var(--color-accent) 20%, var(--color-surface))',
+  'color-mix(in srgb, var(--color-accent) 40%, var(--color-surface))',
+  'color-mix(in srgb, var(--color-accent) 60%, var(--color-surface))',
+  'color-mix(in srgb, var(--color-accent) 80%, var(--color-surface))',
+  'var(--color-accent)',
+]
+
 // ---------- 4. pattern progress strip ----------
 const patternProgress = computed(() =>
   patterns.map((pattern) => {
@@ -111,8 +186,34 @@ const quickLinks = computed(() => [
 </script>
 
 <template>
-  <PageHeader :title="t('dashboard.title')" :subtitle="t('dashboard.subtitle')">
+  <PageHeader :title="t('dashboard.title')">
     <template #icon><LayoutDashboard :size="20" /></template>
+    <template #actions>
+      <div v-if="isEditingUsername" class="username-widget">
+        <input
+          ref="usernameInputRef"
+          v-model="userStore.username"
+          class="username-input"
+          :placeholder="t('dashboard.usernamePlaceholder')"
+          :aria-label="t('dashboard.usernameAriaLabel')"
+          maxlength="40"
+          @keyup.enter="commitUsername"
+          @blur="commitUsername"
+        />
+      </div>
+      <div v-else class="username-widget">
+        <span class="username-avatar" aria-hidden="true">{{ userStore.username.charAt(0).toUpperCase() }}</span>
+        <span class="username-display">{{ userStore.username }}</span>
+        <button
+          type="button"
+          class="username-edit-btn"
+          :aria-label="t('dashboard.usernameEditAriaLabel')"
+          @click="editUsername"
+        >
+          <Pencil :size="14" />
+        </button>
+      </div>
+    </template>
   </PageHeader>
 
   <div class="stat-row">
@@ -148,10 +249,9 @@ const quickLinks = computed(() => [
               {{ suggestedProblem.difficulty }}
             </Pill>
           </div>
-          <Button variant="secondary" @click="markSuggestedSolved">{{ t('dashboard.suggestionSolvedButton') }}</Button>
+          <Button variant="secondary" @click="openSolveModal">{{ t('dashboard.suggestionSolvedButton') }}</Button>
         </div>
         <p v-else class="due-clear">{{ t('dashboard.suggestionAllStarted') }}</p>
-        <p class="stand-in-note">{{ t('dashboard.suggestionStandInNote') }}</p>
       </Card>
 
       <Card class="section">
@@ -174,6 +274,26 @@ const quickLinks = computed(() => [
           </RouterLink>
         </div>
         <p class="total-solved">{{ t('dashboard.totalSolved', { solved: totalSolved }) }}</p>
+      </Card>
+
+      <Card class="section">
+        <template #header>
+          <Flame :size="16" class="suggestion-card__icon" />
+          {{ t('dashboard.activityHeader') }}
+        </template>
+        <p class="activity-streak">
+          <span v-if="streaks.current > 0" class="activity-streak__current">{{ t('dashboard.currentStreak', { count: streaks.current }) }}</span>
+          <span v-else class="activity-streak__current activity-streak__current--none">{{ t('dashboard.noStreak') }}</span>
+          <span class="activity-streak__longest">{{ t('dashboard.longestStreak', streaks.longest) }}</span>
+        </p>
+        <CalendarHeatmap
+          :values="heatmapValues"
+          :end-date="heatmapEndDate"
+          :range-color="heatmapRangeColor"
+          :dark-mode="appStore.theme === 'dark'"
+          :tooltip-unit="t('dashboard.activityTooltipUnit')"
+          class="activity-heatmap"
+        />
       </Card>
     </div>
 
@@ -207,9 +327,85 @@ const quickLinks = computed(() => [
       </Card>
     </div>
   </div>
+
+  <Modal v-if="solveModalTarget" labelled-by="solve-modal-title" @close="closeSolveModal">
+    <h3 id="solve-modal-title" class="modal-title">
+      {{ t('dashboard.solveModalTitle', { id: solveModalTarget.id, title: solveModalTarget.title }) }}
+    </h3>
+    <p class="modal-lede">{{ t('dashboard.solveModalLede') }}</p>
+    <CodeEditor
+      v-model="solveDraftCode"
+      :ariaLabel="t('dashboard.solveModalAriaLabel')"
+      :placeholder="t('dashboard.solveModalPlaceholder')"
+      min-height="200px"
+    />
+    <div class="modal-actions">
+      <Button variant="primary" :disabled="solveDraftCode.trim() === ''" @click="confirmSolveSuggested">
+        {{ t('dashboard.solveModalConfirm') }}
+      </Button>
+      <Button variant="secondary" @click="closeSolveModal">{{ t('common.cancel') }}</Button>
+    </div>
+  </Modal>
 </template>
 
 <style scoped>
+.username-widget {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.username-input {
+  min-height: var(--hit-target);
+  padding: 0 var(--space-3);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--text-sm);
+  width: 160px;
+  max-width: 100%;
+}
+.username-input:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+.username-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: var(--gradient-accent);
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.username-display {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+.username-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-faint);
+  cursor: pointer;
+}
+.username-edit-btn:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
 .section {
   margin-bottom: var(--space-6);
 }
@@ -258,12 +454,6 @@ const quickLinks = computed(() => [
   color: var(--color-accent-hover);
   text-decoration: underline;
 }
-.stand-in-note {
-  margin: var(--space-3) 0 0;
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
-}
-
 .strip {
   display: flex;
   gap: var(--space-1);
@@ -290,6 +480,43 @@ const quickLinks = computed(() => [
   margin: var(--space-3) 0 0;
   font-size: var(--text-xs);
   color: var(--color-text-faint);
+}
+
+.activity-streak {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+}
+.activity-streak__current {
+  font-weight: 600;
+  color: var(--color-text);
+}
+.activity-streak__current--none {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+.activity-streak__longest {
+  color: var(--color-text-faint);
+}
+
+/* The library hardcodes its label/legend text fill (#767676, or white in
+   dark-mode) — overridden here so it follows the same token every other
+   piece of dashboard text uses instead of its own baked-in palette. */
+.activity-heatmap :deep(text) {
+  fill: var(--color-text-faint) !important;
+}
+/* Every square gets an outline so the grid reads as a grid even before
+   any activity — the fill (color-mix against --color-accent above) is
+   what actually turns on once a day has reps logged. */
+.activity-heatmap :deep(rect.vch__day__square) {
+  stroke: var(--color-border);
+  stroke-width: 1px;
+}
+.activity-heatmap :deep(rect.vch__day__square:hover) {
+  stroke: var(--color-border-strong);
+  stroke-width: 2px;
 }
 
 /* The hero card is deliberately NOT built on <Card> — it needs the
@@ -392,6 +619,20 @@ const quickLinks = computed(() => [
   .stat-row {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
+}
+
+.modal-title {
+  margin-top: 0;
+}
+.modal-lede {
+  color: var(--color-text-muted);
+  margin: 0 0 var(--space-4);
+}
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
 }
 
 @media (max-width: 480px) {

@@ -7,6 +7,7 @@ import {
   buildRepQueue,
   coldReproductionRate,
   weeklyColdReproductionRates,
+  computeStreaks,
   type ScheduledRep,
 } from './scheduler'
 
@@ -241,5 +242,47 @@ describe('weeklyColdReproductionRates', () => {
 
   it('returns an empty series for no reps', () => {
     expect(weeklyColdReproductionRates([])).toEqual([])
+  })
+})
+
+describe('computeStreaks', () => {
+  it('is 0/0 with no activity', () => {
+    expect(computeStreaks([], '2026-01-10')).toEqual({ current: 0, longest: 0 })
+  })
+
+  it('counts a single day as a streak of 1', () => {
+    expect(computeStreaks(['2026-01-10'], '2026-01-10')).toEqual({ current: 1, longest: 1 })
+  })
+
+  it('collapses multiple reps on the same day to one day of streak', () => {
+    expect(computeStreaks(['2026-01-10', '2026-01-10', '2026-01-10'], '2026-01-10')).toEqual({
+      current: 1,
+      longest: 1,
+    })
+  })
+
+  it('counts consecutive days ending today as the current streak', () => {
+    const dates = ['2026-01-08', '2026-01-09', '2026-01-10']
+    expect(computeStreaks(dates, '2026-01-10')).toEqual({ current: 3, longest: 3 })
+  })
+
+  it('still counts a streak ending yesterday as current — today is not over yet', () => {
+    const dates = ['2026-01-08', '2026-01-09']
+    expect(computeStreaks(dates, '2026-01-10')).toEqual({ current: 2, longest: 2 })
+  })
+
+  it('resets current to 0 once a day is fully skipped (two days with no activity)', () => {
+    const dates = ['2026-01-05', '2026-01-06']
+    expect(computeStreaks(dates, '2026-01-10')).toEqual({ current: 0, longest: 2 })
+  })
+
+  it('longest survives a broken current streak', () => {
+    const dates = ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-10']
+    expect(computeStreaks(dates, '2026-01-10')).toEqual({ current: 1, longest: 4 })
+  })
+
+  it('picks the longer of two disjoint runs for longest', () => {
+    const dates = ['2026-01-01', '2026-01-02', '2026-01-05', '2026-01-06', '2026-01-07', '2026-01-10']
+    expect(computeStreaks(dates, '2026-01-10')).toEqual({ current: 1, longest: 3 })
   })
 })

@@ -48,7 +48,7 @@ function intervalForRepNumber(repNumber: number): number {
   return REP_INTERVAL_DAYS[repNumber] ?? REP_INTERVAL_DAYS[MAX_TABULATED_REP]
 }
 
-function addDays(dateStr: string, days: number): string {
+export function addDays(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T00:00:00.000Z`)
   d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().slice(0, 10)
@@ -173,4 +173,49 @@ export function weeklyColdReproductionRates(reps: readonly { date: string; resul
       rate: coldReproductionRate(weekReps),
       attempted: weekReps.length,
     }))
+}
+
+// ---------- activity streak — the heatmap's companion stat ----------
+
+export interface StreakInfo {
+  /** Consecutive days of activity ending today. If today has no rep yet,
+   *  a streak still ending yesterday counts as current — the day isn't
+   *  "broken" until it's actually over, same as GitHub/LeetCode. */
+  current: number
+  longest: number
+}
+
+/**
+ * `repDates` is every date (YYYY-MM-DD, duplicates fine) a rep was logged
+ * on. Both streaks are about DAYS with activity, not rep counts — two
+ * reps on one day still only count as one day of streak.
+ */
+export function computeStreaks(repDates: readonly string[], today: string): StreakInfo {
+  const activeDays = new Set(repDates)
+  if (activeDays.size === 0) return { current: 0, longest: 0 }
+
+  let longest = 0
+  for (const day of activeDays) {
+    if (activeDays.has(addDays(day, -1))) continue // not the start of a run
+    let length = 1
+    let cursor = day
+    while (activeDays.has(addDays(cursor, 1))) {
+      cursor = addDays(cursor, 1)
+      length++
+    }
+    longest = Math.max(longest, length)
+  }
+
+  const anchor = activeDays.has(today) ? today : addDays(today, -1)
+  let current = 0
+  if (activeDays.has(anchor)) {
+    current = 1
+    let cursor = anchor
+    while (activeDays.has(addDays(cursor, -1))) {
+      cursor = addDays(cursor, -1)
+      current++
+    }
+  }
+
+  return { current, longest }
 }

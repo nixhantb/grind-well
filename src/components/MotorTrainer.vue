@@ -38,9 +38,6 @@ const emit = defineEmits<{
 }>()
 
 // ---------- refs to the DOM ----------
-// `ref` on a custom component gives you the component INSTANCE, not a DOM
-// node — this works because CodeEditor.vue (and Button.vue, below)
-// explicitly `defineExpose`s a `.focus()` method for exactly this case.
 const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null)
 const firstModalButtonRef = ref<InstanceType<typeof Button> | null>(null)
 
@@ -115,10 +112,7 @@ function checkStall() {
   if (Date.now() - lastActivityAt >= 90_000) stalled.value = true
 }
 
-// VUE CONCEPT: `watch` reacting to a boolean flag to run a DOM side
-// effect — a different job than the `watch` in the Pinia stores (which
-// persists data). Here it's purely about moving keyboard focus: the
-// instant the stall modal appears, focus its first real action so a
+// The instant the stall modal appears, focus its first real action so a
 // keyboard user isn't left focused on a now-hidden/disabled textarea.
 watch(stalled, (isStalled) => {
   if (isStalled) nextTick(() => firstModalButtonRef.value?.focus())

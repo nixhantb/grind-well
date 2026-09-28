@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
-// VUE CONCEPT: props, typed with a plain TS interface.
-// `defineProps<Props>()` is a compile-time-only macro (it vanishes in the
-// compiled output) — the closest C# analogy is a constructor parameter
-// list: the caller must supply values matching these shapes, and
-// `withDefaults` is like giving some of those parameters default values.
 interface Props {
   variant?: 'primary' | 'secondary' | 'ghost'
   type?: 'button' | 'submit'
@@ -17,23 +12,12 @@ withDefaults(defineProps<Props>(), {
   disabled: false,
 })
 
-// Notice there's no `defineEmits` and no `@click` handling in this file at
-// all. VUE-SPECIFIC MAGIC, no real C# equivalent: because this component's
-// template has exactly one root element (the <button>), Vue automatically
-// forwards every attribute AND event listener the parent puts on <Button>
-// straight onto that root element. So a parent writing
-// `<Button @click="save">Save</Button>` just works — the native `click`
-// event fires on the real <button>, bubbles up, and Vue's fallthrough
-// wires the parent's listener to it with zero code here. Same for
-// `aria-label`, `id`, etc. This stops working the moment a component has
-// multiple root nodes or you opt out with `inheritAttrs: false`.
+// No defineEmits/@click handling needed — with a single root element,
+// Vue forwards attributes and listeners straight onto it, so
+// `<Button @click="save">` just works.
 
-// A plain `ref="x"` on <Button> from a parent gives the component
-// INSTANCE, not the underlying DOM node, because <script setup> hides
-// everything by default. `defineExpose` is the explicit opt-in: it picks
-// exactly what a parent is allowed to reach through that ref — here, just
-// enough to call `.focus()` imperatively (MotorTrainer's stall modal
-// needs this), without exposing the raw element for anything else.
+// `defineExpose` so a parent's `ref="x"` can call `.focus()` — plain
+// `ref` on a component gives the instance, not the DOM node.
 const buttonRef = ref<HTMLButtonElement | null>(null)
 defineExpose({
   focus: () => buttonRef.value?.focus(),
@@ -47,9 +31,6 @@ defineExpose({
 </template>
 
 <style scoped>
-/* `scoped` — Vue appends a unique attribute (e.g. data-v-f3a1) to every
-   element this template renders and to every selector below, so ".btn"
-   here can never accidentally match a `.btn` in some other component. */
 .btn {
   display: inline-flex;
   align-items: center;

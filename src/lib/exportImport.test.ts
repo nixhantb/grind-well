@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildExportBundle, isExportBundle, exportFileName } from './exportImport'
+import { buildExportBundle, exportBundleSchema, isExportBundle, exportFileName, DEFAULT_USERNAME } from './exportImport'
 import type { ProblemStatesMap } from '../stores/progressTypes'
 
 const sampleProblemStates: ProblemStatesMap = {
@@ -44,12 +44,12 @@ const sampleProblemStates: ProblemStatesMap = {
 
 describe('buildExportBundle / isExportBundle round trip', () => {
   it('produces a bundle that passes its own validator', () => {
-    const bundle = buildExportBundle('dark', sampleProblemStates)
+    const bundle = buildExportBundle('dark', 'Ada Lovelace', sampleProblemStates)
     expect(isExportBundle(bundle)).toBe(true)
   })
 
   it('is lossless through a real JSON.stringify/parse cycle (the actual export/import path)', () => {
-    const bundle = buildExportBundle('light', sampleProblemStates)
+    const bundle = buildExportBundle('light', 'Ada Lovelace', sampleProblemStates)
     const roundTripped = JSON.parse(JSON.stringify(bundle))
 
     expect(isExportBundle(roundTripped)).toBe(true)
@@ -58,19 +58,19 @@ describe('buildExportBundle / isExportBundle round trip', () => {
   })
 
   it('is lossless even with an empty problem-states map', () => {
-    const bundle = buildExportBundle('dark', {})
+    const bundle = buildExportBundle('dark', 'Ada Lovelace', {})
     const roundTripped = JSON.parse(JSON.stringify(bundle))
     expect(isExportBundle(roundTripped)).toBe(true)
     expect(roundTripped.problemStates).toEqual({})
   })
 
   it('rejects a bundle with the wrong version', () => {
-    const bundle = buildExportBundle('dark', sampleProblemStates)
+    const bundle = buildExportBundle('dark', 'Ada Lovelace', sampleProblemStates)
     expect(isExportBundle({ ...bundle, version: 2 })).toBe(false)
   })
 
   it('rejects a bundle with a corrupted problemStates entry', () => {
-    const bundle = buildExportBundle('dark', sampleProblemStates)
+    const bundle = buildExportBundle('dark', 'Ada Lovelace', sampleProblemStates)
     const corrupted = { ...bundle, problemStates: { 7: { ...sampleProblemStates[7], status: 'nonsense' } } }
     expect(isExportBundle(corrupted)).toBe(false)
   })
@@ -79,6 +79,16 @@ describe('buildExportBundle / isExportBundle round trip', () => {
     expect(isExportBundle(null)).toBe(false)
     expect(isExportBundle('not a bundle')).toBe(false)
     expect(isExportBundle(42)).toBe(false)
+  })
+
+  it('defaults username to a placeholder when importing a backup made before that field existed', () => {
+    const bundle = buildExportBundle('dark', 'Ada Lovelace', sampleProblemStates)
+    const { username, ...olderBundle } = bundle
+    void username
+
+    const result = exportBundleSchema.safeParse(olderBundle)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.username).toBe(DEFAULT_USERNAME)
   })
 })
 

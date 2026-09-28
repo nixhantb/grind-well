@@ -1,16 +1,3 @@
-// Every UI string the app itself authors, in one place — buttons, headers,
-// labels, empty states, confirm/prompt dialogs. This is the "translation
-// file" vue-i18n reads from; today it's the only locale, but every screen
-// already goes through `t()` instead of a hardcoded string, so adding a
-// second locale later is "add a sibling file", not "hunt through 20
-// components".
-//
-// Deliberately NOT in here: src/content/protocols.ts and
-// content.generated.ts. Those are curriculum text transcribed verbatim
-// from content-source/*.md and checked against it — they're content data,
-// not UI copy this app wrote, and running them through a translation
-// catalog would mean maintaining a second, drifting copy of text that's
-// supposed to be a byte-for-byte match to the source document.
 export const en = {
   common: {
     backToPatterns: 'Back to patterns',
@@ -18,6 +5,7 @@ export const en = {
     no: 'No',
     noRepsLogged: 'No reps logged yet.',
     unknownDash: '-',
+    cancel: 'Cancel',
     difficultyLetter: {
       easy: 'E',
       medium: 'M',
@@ -54,7 +42,9 @@ export const en = {
 
   dashboard: {
     title: 'Dashboard',
-    subtitle: "What's due, what's new, and whether it's actually sticking.",
+    usernamePlaceholder: 'Your name',
+    usernameAriaLabel: 'Your display name',
+    usernameEditAriaLabel: 'Edit your display name',
     statRepsDue: 'Reps due',
     statRepsDueCaughtUp: "You're caught up",
     statRepsDueSplit: '{overdue} overdue · {dueToday} due today',
@@ -66,10 +56,18 @@ export const en = {
     suggestionHeader: "Today's suggested new problem",
     suggestionSolvedButton: 'I solved this, start reps',
     suggestionAllStarted: 'All 149 problems have been started. Time to re-read the weekly schedule.',
-    suggestionStandInNote:
-      '"I solved this" is a stand-in until the real paste-your-solution flow ships. It will ask you to paste something via a browser prompt, then schedule rep 1 for today, same as the real flow will.',
+    solveModalTitle: 'Paste your solution — #{id} {title}',
+    solveModalLede: 'This becomes the diff target for every rep on this problem, same as pasting it on the problem page.',
+    solveModalAriaLabel: 'Accepted solution code',
+    solveModalPlaceholder: 'Paste your accepted C# solution here.',
+    solveModalConfirm: 'Save & schedule rep 1',
     patternProgressHeader: 'Pattern progress',
     totalSolved: '{solved}/149 problems solved',
+    activityHeader: 'Activity',
+    activityTooltipUnit: 'reps',
+    currentStreak: '{count}-day streak',
+    noStreak: 'No active streak',
+    longestStreak: 'Longest: {count} day | Longest: {count} days',
     heroTitle: 'Cold reproduction rate',
     heroRepsLogged: '{count} rep logged | {count} reps logged',
     heroEmpty: 'No reps logged yet. This fills in once you start drilling.',
@@ -83,8 +81,6 @@ export const en = {
     quickLinkProtocolsSublabel: 'The re-typing rules, in full',
     quickLinkData: 'Data',
     quickLinkDataSublabel: 'Export, import, stuck-line log',
-    promptTitle: 'Paste something to drill against (stand-in for the real paste-solution UI):',
-    promptPlaceholder: '// your accepted solution here',
   },
 
   patterns: {
@@ -212,7 +208,7 @@ export const en = {
 
   queue: {
     title: 'Rep Queue',
-    subtitle: 'Oldest due first. Work top to bottom, that ordering is the entire point.',
+    subtitle: 'Oldest due first.',
     empty: 'Nothing due right now.',
     colDue: 'Due',
     colProblem: 'Problem',
@@ -260,6 +256,9 @@ export const en = {
     title: 'Data',
     subtitle: "Export/import is your only backup and your only way to sync between machines. There's no account, no server.",
     backupHeader: 'Backup',
+    neverExported: "You haven't exported a backup yet.",
+    lastExportedToday: 'Last exported today.',
+    lastExportedDaysAgo: 'Last exported {count} day ago. | Last exported {count} days ago.',
     exportButton: 'Export backup (JSON)',
     importButton: 'Import backup…',
     exportedMessage: 'Exported {filename}.',
@@ -296,6 +295,13 @@ export const en = {
   storage: {
     corrupted: 'Saved data for "{key}" was corrupted and has been reset.',
     invalidShape: 'Saved data for "{key}" didn\'t match the expected shape and has been reset.',
+  },
+
+  backup: {
+    nudgeNever: "You haven't backed up your progress yet - export/import is the only copy this app keeps. {link}",
+    nudgeStale:
+      "It's been {count} day since your last backup. {link} | It's been {count} days since your last backup. {link}",
+    nudgeLink: 'Back up now →',
   },
 }
 

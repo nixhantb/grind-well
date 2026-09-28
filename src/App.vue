@@ -1,15 +1,7 @@
 <script setup lang="ts">
-// VUE CONCEPT: the Single-File Component (SFC).
-// One .vue file = <script setup> (your code) + <template> (your markup) + <style>
-// (CSS scoped to this file only). The Vite plugin compiles this into a plain JS
-// module at build time — nothing ".vue" ships to the browser. `<script setup>` is
-// the modern, terser form of the Composition API: everything you declare here
-// (imports, refs, functions) is automatically available to the template below,
-// with no manual "return { ... }" step.
-//
-// App.vue is the root component — the one thing main.ts mounts. Its only jobs
-// right now are: lay out the shell (nav + content area), render whichever
-// route is active via <RouterView>, and carry the active theme.
+// The root component — the one thing main.ts mounts. Lays out the shell
+// (nav + content area), renders whichever route is active via
+// <RouterView>, and carries the active theme.
 import { computed, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -29,6 +21,8 @@ import {
 } from '@lucide/vue'
 import { useAppStore } from './stores/app'
 import { useProgressStore } from './stores/progress'
+import { useBackupStore } from './stores/backup'
+import { backupNudgeKind, daysSinceExport } from './lib/backupNudge'
 import Badge from './components/Badge.vue'
 import ShortcutsOverlay from './components/ShortcutsOverlay.vue'
 import { useGlobalShortcuts, useShortcuts } from './composables/useGlobalShortcuts'
@@ -36,17 +30,14 @@ import { useGlobalShortcuts, useShortcuts } from './composables/useGlobalShortcu
 const { t } = useI18n()
 const store = useAppStore()
 const progressStore = useProgressStore()
+const backupStore = useBackupStore()
 const { showHelp } = useGlobalShortcuts()
 const shortcuts = useShortcuts()
 const route = useRoute()
 
-// ---------- mobile nav drawer ----------
-// Below 768px the sidebar becomes an off-canvas drawer (CSS handles the
-// slide via a class, not inline styles) instead of the permanent 224px
-// column — that column alone eats over half the width of a phone screen.
-// This ref means nothing above that breakpoint: the CSS only reads
-// `.shell__nav--open` inside the `@media (max-width: 768px)` block, so
-// toggling it on desktop has no visible effect at all.
+// Below 768px the sidebar becomes an off-canvas drawer instead of the
+// permanent column; this ref only matters under that breakpoint (CSS
+// reads `.shell__nav--open`).
 const navOpen = ref(false)
 watch(
   () => route.fullPath,
@@ -55,12 +46,8 @@ watch(
   },
 )
 
-// "Validate on read and fall back to defaults with a visible warning" —
-// this is the visible part, shown regardless of which screen a corrupted
-// read happened to be noticed on. The store only carries a {reason, key}
-// code (it has no i18n access); this is where that becomes real text.
-// (Only the progress store still hand-validates like this — the theme
-// store now leaves its own storage handling to useColorMode.)
+// The progress store only carries a {reason, key} code (no i18n access
+// there); this is where that becomes real text for the banner below.
 const storageWarningCode = computed(() => progressStore.storageWarning)
 const storageWarning = computed(() => {
   const code = storageWarningCode.value
@@ -68,8 +55,18 @@ const storageWarning = computed(() => {
   return t(`storage.${code.reason}`, { key: code.key })
 })
 
-// `badge` is a count only the Rep Queue link carries — everything else is
-// `undefined`, and Badge.vue itself renders nothing at 0/undefined anyway.
+// The Data page already shows its own "last exported" line — suppressing
+// the nudge there avoids saying the same thing twice on the one screen
+// where the user is already looking right at it.
+const backupNudgeKindValue = computed(() => {
+  if (route.path === '/data') return null
+  return backupNudgeKind(Object.keys(progressStore.problemStates).length, backupStore.lastExportedAt, new Date().toISOString())
+})
+const backupNudgeDays = computed(() => {
+  if (backupNudgeKindValue.value !== 'stale' || backupStore.lastExportedAt === null) return 0
+  return daysSinceExport(backupStore.lastExportedAt, new Date().toISOString())
+})
+
 const navLinks = computed(() => [
   { to: '/', label: t('nav.dashboard'), icon: LayoutDashboard },
   { to: '/patterns', label: t('nav.patterns'), icon: LayoutGrid },
@@ -114,9 +111,6 @@ const navLinks = computed(() => [
         </button>
       </div>
 
-      <!-- v-for + :key: Vue needs a stable identity per item to diff the list
-           efficiently across re-renders — the equivalent of why you'd give
-           EF Core entities a primary key rather than relying on list position. -->
       <RouterLink v-for="link in navLinks" :key="link.to" :to="link.to" class="shell__link">
         <component :is="link.icon" :size="18" class="shell__link-icon" />
         <span class="shell__link-label">{{ link.label }}</span>
@@ -145,6 +139,16 @@ const navLinks = computed(() => [
     </nav>
     <main class="shell__content">
       <p v-if="storageWarning" class="storage-warning">⚠️ {{ storageWarning }}</p>
+      <p v-if="backupNudgeKindValue === 'never'" class="backup-nudge">
+        <i18n-t keypath="backup.nudgeNever">
+          <template #link><RouterLink to="/data">{{ t('backup.nudgeLink') }}</RouterLink></template>
+        </i18n-t>
+      </p>
+      <p v-else-if="backupNudgeKindValue === 'stale'" class="backup-nudge">
+        <i18n-t keypath="backup.nudgeStale" :plural="backupNudgeDays">
+          <template #link><RouterLink to="/data">{{ t('backup.nudgeLink') }}</RouterLink></template>
+        </i18n-t>
+      </p>
       <RouterView />
     </main>
     <ShortcutsOverlay v-if="showHelp" :shortcuts="shortcuts" @close="showHelp = false" />
@@ -286,6 +290,23 @@ const navLinks = computed(() => [
   color: var(--color-hard);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
+}
+/* Informational, not urgent — a stale backup is a nudge, not the same
+   severity as a corrupted-storage warning, so it gets the --color-info
+   tone (already used for the dashboard's "reps due" stat) rather than
+   reusing storage-warning's --color-hard. */
+.backup-nudge {
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-6);
+  background: var(--color-info-bg);
+  color: var(--color-info);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.backup-nudge :deep(a) {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
 }
 
 /* ---- mobile top bar + menu buttons ---- */
