@@ -81,6 +81,11 @@ export const en = {
     quickLinkProtocolsSublabel: 'The re-typing rules, in full',
     quickLinkData: 'Data',
     quickLinkDataSublabel: 'Export, import, stuck-line log',
+    coldAuditHeader: 'Cold audit',
+    coldAuditSublabel: "Sunday's ritual: retype these from memory. Any that fail go back into the queue at +1 day.",
+    coldAuditShuffle: 'Shuffle',
+    coldAuditShuffleAriaLabel: 'Pick a different random sample',
+    coldAuditEmpty: 'Nothing graduated yet — problems show up here once they leave the rep queue.',
   },
 
   patterns: {

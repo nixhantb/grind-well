@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   LayoutDashboard,
@@ -15,6 +15,7 @@ import {
   Database,
   ChevronRight,
   Pencil,
+  Shuffle,
 } from '@lucide/vue'
 // GitHub/LeetCode-style activity calendar — a battle-tested SVG component
 // rather than a hand-rolled grid, so date-bucketing, month/day labels, and
@@ -27,6 +28,7 @@ import { useAppStore } from '../stores/app'
 import { useUserStore } from '../stores/user'
 import { patterns, problems, type Problem } from '../content'
 import { suggestNextProblem } from '../lib/suggestNextProblem'
+import { pickColdAuditSample } from '../lib/coldAudit'
 import { weeklyColdReproductionRates, computeStreaks } from '../lib/scheduler'
 import { todayISO, parseLocalDateISO } from '../lib/date'
 import Button from '../components/Button.vue'
@@ -172,6 +174,31 @@ const patternProgress = computed(() =>
 )
 const totalGraduated = computed(() => patternProgress.value.reduce((sum, p) => sum + p.graduated, 0))
 
+// ---------- cold audit — graduated problems leave the rep queue for good
+// (scheduler.ts: computeNextDueDate returns null once graduated), so
+// without this they'd never come up again and quietly get forgotten. This
+// is the Sunday "cold audit" ritual from protocols.ts made clickable: a
+// random sample re-picked on demand, each one routing into the same
+// retype-and-log flow as a normal rep (/train/solution/:id) — a failed
+// attempt naturally falls back into the queue via the usual addRep logic,
+// no separate code path needed.
+const graduatedIds = computed(() => {
+  const ids = new Set<number>()
+  for (const problem of problems) {
+    if (store.getState(problem.id).status === 'graduated') ids.add(problem.id)
+  }
+  return ids
+})
+const coldAuditSample = ref<Problem[]>([])
+function shuffleColdAudit() {
+  coldAuditSample.value = pickColdAuditSample(problems, graduatedIds.value, 3)
+}
+// Re-picks once IndexedDB finishes loading (graduatedIds is empty before
+// that resolves), and again whenever the graduated set changes size —
+// e.g. a cold-audit fail knocks one out, or a new problem graduates —
+// so the sample doesn't keep offering a problem that's no longer eligible.
+watch(() => `${store.isLoaded}:${graduatedIds.value.size}`, shuffleColdAudit, { immediate: true })
+
 // The de-emphasized vanity metric — shown, just small and last.
 const totalSolved = computed(
   () => Object.values(store.problemStates).filter((s) => s.status !== 'not-started').length,
@@ -274,6 +301,37 @@ const quickLinks = computed(() => [
           </RouterLink>
         </div>
         <p class="total-solved">{{ t('dashboard.totalSolved', { solved: totalSolved }) }}</p>
+      </Card>
+
+      <Card class="section cold-audit-card">
+        <template #header>
+          <GraduationCap :size="16" class="suggestion-card__icon" />
+          {{ t('dashboard.coldAuditHeader') }}
+          <button
+            v-if="coldAuditSample.length > 0"
+            type="button"
+            class="cold-audit-shuffle"
+            :aria-label="t('dashboard.coldAuditShuffleAriaLabel')"
+            @click="shuffleColdAudit"
+          >
+            <Shuffle :size="14" />
+            {{ t('dashboard.coldAuditShuffle') }}
+          </button>
+        </template>
+        <p v-if="coldAuditSample.length === 0" class="due-clear">{{ t('dashboard.coldAuditEmpty') }}</p>
+        <template v-else>
+          <p class="cold-audit-sublabel">{{ t('dashboard.coldAuditSublabel') }}</p>
+          <ul class="cold-audit-list">
+            <li v-for="problem in coldAuditSample" :key="problem.id">
+              <RouterLink :to="`/train/solution/${problem.id}`" class="suggestion-link">
+                #{{ problem.id }} {{ problem.title }}
+              </RouterLink>
+              <Pill :tone="problem.difficulty.toLowerCase() as 'easy' | 'medium' | 'hard'">
+                {{ problem.difficulty }}
+              </Pill>
+            </li>
+          </ul>
+        </template>
       </Card>
 
       <Card class="section">
@@ -480,6 +538,50 @@ const quickLinks = computed(() => [
   margin: var(--space-3) 0 0;
   font-size: var(--text-xs);
   color: var(--color-text-faint);
+}
+
+.cold-audit-card :deep(.card__header) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.cold-audit-shuffle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+}
+.cold-audit-shuffle:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.cold-audit-sublabel {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+.cold-audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cold-audit-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .activity-streak {
