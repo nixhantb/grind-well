@@ -6,10 +6,13 @@
          this can be strict. `style-src` needs 'unsafe-inline' because
          CodeMirror (the code editor) applies its theme/highlighting by
          injecting <style> tags at runtime; script-src does not, since
-         this app has no inline scripts of its own. -->
+         this app has no inline scripts of its own. `frame-ancestors` is
+         deliberately omitted here — browsers ignore it in a <meta> CSP
+         (and only log a warning), so it's set for real via the
+         Content-Security-Policy response header in vercel.json instead. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';"
     />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any" />
