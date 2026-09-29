@@ -33,7 +33,16 @@ export const useProgressStore = defineStore('progress', () => {
   const storageWarning = ref<StorageWarning | null>(null)
   const isLoaded = ref(false)
 
-  const saveProgress = debounce(() => writeToIndexedDB(STORAGE_KEY, { ...problemStates }), 500)
+  // `{ ...problemStates }` looked like enough to snapshot the data, but a
+  // shallow spread of a Vue reactive object still returns *nested* reactive
+  // Proxies for every object/array property (Vue wraps on read, lazily,
+  // one level at a time) — and IndexedDB's structured-clone algorithm
+  // can't clone a Proxy, so every save was throwing DataCloneError and
+  // failing silently (writeToIndexedDB deliberately swallows write errors).
+  // Round-tripping through JSON strips every Proxy down to plain data —
+  // safe here since ProblemState is itself JSON-safe (the same shape
+  // already serializes fine on the old localStorage path).
+  const saveProgress = debounce(() => writeToIndexedDB(STORAGE_KEY, JSON.parse(JSON.stringify(problemStates))), 500)
 
   // The debounce above means a save can still be sitting in the 500ms
   // window when the user refreshes or closes the tab — without this,
