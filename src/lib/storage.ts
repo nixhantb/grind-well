@@ -152,16 +152,44 @@ export async function writeToIndexedDB(
   }
 }
 
+export interface Debounced<Args extends unknown[]> {
+  (...args: Args): void
+  /** Runs the pending call right now and cancels the timer, if one is
+   *  pending — for the "user is about to leave" moment (tab hidden, page
+   *  unloading) where waiting out the delay would mean the write never
+   *  happens at all. A no-op when nothing is pending. */
+  flush(): void
+}
+
 /**
  * Delays calling `fn` until `delayMs` has passed with no further calls —
  * "every write is debounced" means every store routes its writes through
  * one of these rather than calling writeToStorage directly on every
  * keystroke/mutation.
  */
-export function debounce<Args extends unknown[]>(fn: (...args: Args) => void, delayMs: number): (...args: Args) => void {
+export function debounce<Args extends unknown[]>(fn: (...args: Args) => void, delayMs: number): Debounced<Args> {
   let timer: ReturnType<typeof setTimeout> | undefined
-  return (...args: Args) => {
+  let pendingArgs: Args | undefined
+
+  const debounced = ((...args: Args) => {
+    pendingArgs = args
     if (timer !== undefined) clearTimeout(timer)
-    timer = setTimeout(() => fn(...args), delayMs)
+    timer = setTimeout(() => {
+      timer = undefined
+      const args = pendingArgs
+      pendingArgs = undefined
+      if (args) fn(...args)
+    }, delayMs)
+  }) as Debounced<Args>
+
+  debounced.flush = () => {
+    if (timer === undefined) return
+    clearTimeout(timer)
+    timer = undefined
+    const args = pendingArgs
+    pendingArgs = undefined
+    if (args) fn(...args)
   }
+
+  return debounced
 }

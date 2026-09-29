@@ -35,6 +35,20 @@ export const useProgressStore = defineStore('progress', () => {
 
   const saveProgress = debounce(() => writeToIndexedDB(STORAGE_KEY, { ...problemStates }), 500)
 
+  // The debounce above means a save can still be sitting in the 500ms
+  // window when the user refreshes or closes the tab — without this,
+  // that write simply never happens and the rep just logged vanishes.
+  // 'visibilitychange' fires while the page is still fully alive (unlike
+  // 'unload', which arrives too late for an async IndexedDB write to
+  // finish), so it's the reliable place to flush; 'pagehide' catches the
+  // bfcache/mobile-Safari cases 'visibilitychange' can miss.
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) saveProgress.flush()
+    })
+    window.addEventListener('pagehide', () => saveProgress.flush())
+  }
+
   // One-time migration so upgrading from the old localStorage-backed
   // version doesn't wipe anyone's history: if IndexedDB has never been
   // touched before, copy over whatever's in the old localStorage key
